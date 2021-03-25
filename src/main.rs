@@ -1,9 +1,10 @@
 extern crate stopwatch;
+
 use stopwatch::{Stopwatch};
 
 use std::sync::Arc;
 use std::thread;
-use blas::*;
+
 
 struct AddJob {
     lhs_start: usize,
@@ -74,16 +75,14 @@ fn imperative_mul(matrix_size: usize) -> i64 {
     return sw.elapsed_ms();
 }
 
-fn bench_imperative_mul(matrix_size: usize) {
-    println!("Benching imperative mul");
+fn bench_imperative_mul(matrix_size: usize) -> f32 {
     let mut total_results = 0;
     
     for i in 0..25 {
         let result = imperative_mul(matrix_size);
         total_results += result;
-        println!("Finished run # {}", i + 1);
     }
-    println!("Average {}", total_results as f32 / 25.);     
+    return total_results as f32 / 25.;
 }
 
 fn jank_mul(matrix_size: usize) -> i64 {
@@ -164,16 +163,14 @@ fn jank_mul(matrix_size: usize) -> i64 {
     return sw.elapsed_ms();
 }
 
-fn bench_jank_mul(matrix_size: usize) {
-    println!("Benching Jank Mul");
+fn bench_jank_mul(matrix_size: usize) -> f32 {
     let mut total_results = 0;
     
     for i in 0..25 {
         let result = jank_mul(matrix_size);
         total_results += result;
-        println!("Finished run # {}", i + 1);
     }
-    println!("Average {}", total_results as f32 / 25.);     
+    return total_results as f32 / 25.;
 }
 
 
@@ -199,16 +196,14 @@ fn imperative_add(matrix_size: usize) -> i64 {
     return sw.elapsed_ms();
 }
 
-pub fn bench_imperative_add(matrix_size: usize) {
-    println!("Benching imperative Add");
+pub fn bench_imperative_add(matrix_size: usize) -> f32 {
     let mut total_results = 0;
     
     for i in 0..25 {
         let result = imperative_add(matrix_size);
         total_results += result;
-        println!("Finished run # {}", i + 1);
     }
-    println!("Average {}", total_results as f32 / 25.); 
+    return total_results as f32 / 25.;
 }
 
 fn jank_add(matrix_size: usize) -> i64 {
@@ -278,7 +273,7 @@ fn jank_add(matrix_size: usize) -> i64 {
     return sw.elapsed_ms();
 }
 
-pub fn bench_jank_add(matrix_size: usize) {
+fn bench_jank_add(matrix_size: usize) -> f32 {
     println!("Benching Jank Add");
     let total_matrix_size = matrix_size * matrix_size;
     let mut total_results = 0;
@@ -286,29 +281,57 @@ pub fn bench_jank_add(matrix_size: usize) {
     for i in 0..25 {
         let result = jank_add(matrix_size);
         total_results += result;
-        println!("Finished run # {}", i + 1);
     }
-    println!("Average {}", total_results as f32 / 25.); 
+    return total_results as f32 / 25.;
 }
 
-fn bench_add() {
-
-    let matrix_size = 10000;
-
+fn bench_add(matrix_size: usize) {
+    let matrix_size = matrix_size;
     println!("Starting Add Benchmark");
-    bench_imperative_add(matrix_size);
-    bench_jank_add(matrix_size);
+    let imperative_result = bench_imperative_add(matrix_size);
+    let jank_result = bench_jank_add(matrix_size);
+    println!("Time taken for imperative Add {}, jank Add {} for matrix of size {}", imperative_result, jank_result, matrix_size);
 }
 
-fn bench_mul() {
+fn bench_mul(matrix_size: usize) {
     //Imperative has some trouble with larger sizes, so we reduce it by a factor of 10
-    let matrix_size = 1000;
-    println!("Starting Mul Benchmark");
-    bench_imperative_mul(matrix_size);
-    bench_jank_mul(matrix_size);
+    let mut matrix_size = matrix_size / 10;
+    if matrix_size == 0  {
+        matrix_size = 1;
+    }
+    let imperative_result = bench_imperative_mul(matrix_size);
+    let jank_result = bench_jank_mul(matrix_size);
+    println!("Time taken for imperative mul {}, jank mul {} for matrix of size {}", imperative_result, jank_result, matrix_size);
 }
 
+/*
+fn blas_mul() {
+    let (m, n, k) = (1000, 1000, 1000);
+    let mut a = vec![];
+    let mut b = vec![];
+    let mut c = vec![];
+
+    for _ in 0..1000 {
+        for _ in 0..1000 {
+            a.push(0.0f64);
+            b.push(0.0f64);
+            c.push(0.0f64);
+        }
+    }
+    unsafe {
+        dgemm(b'N', b'N', m, n, k, 1.0, &a, m, &b, k, 1.0, &mut c[..], m);
+    }
+}
+*/
 fn main() {
-    bench_add();
-    bench_mul();
+
+    //blas_mul();
+
+    
+    for i in 1..20{
+        bench_add(500 * i);
+        bench_mul(500 * i);
+    }
+    
+    
 }
