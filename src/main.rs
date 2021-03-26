@@ -1,5 +1,6 @@
 extern crate stopwatch;
 
+
 use stopwatch::{Stopwatch};
 
 use std::sync::Arc;
@@ -101,8 +102,8 @@ fn jank_mul(matrix_size: usize) -> i64 {
     let cpus = num_cpus::get() - 1;//Give our computer some room to breath
 
     //allocate this work for the number of cpus
-    let number_of_rows = matrix_size / cpus;
-    let number_of_rows_remainder = (matrix_size) % cpus;
+    let number_of_rows = total_matrix_size / cpus;
+    let number_of_rows_remainder = (total_matrix_size) % cpus;
     for cpu in 0..cpus {
         let left_hand_start = total_matrix_size;
         let right_hand_start = total_matrix_size * 2;
@@ -126,9 +127,11 @@ fn jank_mul(matrix_size: usize) -> i64 {
 
             //For each slot in the outpuit matrix
             for location in 0..job.number_of_operations {
+                let output_location = location + job.destination_start;
+                //println!("location {}", output_location);
                 let mut total_result = 0.;
-                let output_x = location % job.matrix_size;
-                let output_y = location / job.matrix_size;
+                let output_x = output_location % job.matrix_size;
+                let output_y = output_location / job.matrix_size;
 
                 for i in 0..job.matrix_size {
                     let left_side_offset = (i + (output_y * job.matrix_size)) + job.lhs_start;//We want to walk along the coloums of the the
@@ -143,7 +146,7 @@ fn jank_mul(matrix_size: usize) -> i64 {
                 }
                 //Spooky pointer math
                 unsafe {
-                    *memory.offset(location as isize) = total_result;
+                    *memory.offset(output_location as isize) = total_result;
                 }
             }
         });
@@ -304,29 +307,8 @@ fn bench_mul(matrix_size: usize) {
     println!("Time taken for imperative mul {}, jank mul {} for matrix of size {}", imperative_result, jank_result, matrix_size);
 }
 
-/*
-fn blas_mul() {
-    let (m, n, k) = (1000, 1000, 1000);
-    let mut a = vec![];
-    let mut b = vec![];
-    let mut c = vec![];
 
-    for _ in 0..1000 {
-        for _ in 0..1000 {
-            a.push(0.0f64);
-            b.push(0.0f64);
-            c.push(0.0f64);
-        }
-    }
-    unsafe {
-        dgemm(b'N', b'N', m, n, k, 1.0, &a, m, &b, k, 1.0, &mut c[..], m);
-    }
-}
-*/
 fn main() {
-
-    //blas_mul();
-
     
     for i in 1..20{
         bench_add(500 * i);
