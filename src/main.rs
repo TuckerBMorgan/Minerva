@@ -3,9 +3,15 @@ extern crate stopwatch;
 
 use stopwatch::{Stopwatch};
 
-use std::sync::Arc;
+use std::{hash::Hash, sync::Arc};
 use std::thread;
+use std::collections::{HashMap, HashSet};
 
+#[derive(Debug, Copy, Clone)]
+enum Operator {
+    Add,
+    Mul
+}
 
 struct AddJob {
     lhs_start: usize,
@@ -78,7 +84,7 @@ fn imperative_mul(matrix_size: usize) -> i64 {
 
 fn bench_imperative_mul(matrix_size: usize) -> f32 {
     let mut total_results = 0;
-    
+
     for i in 0..25 {
         let result = imperative_mul(matrix_size);
         total_results += result;
@@ -94,7 +100,7 @@ fn jank_mul(matrix_size: usize) -> i64 {
             for x in 0..matrix_size {
                 memory_buf.push(x as f32);
             }
-        }    
+        }
     }
     let sw = Stopwatch::start_new();
     let arcss = Arc::new(memory_buf);
@@ -168,7 +174,7 @@ fn jank_mul(matrix_size: usize) -> i64 {
 
 fn bench_jank_mul(matrix_size: usize) -> f32 {
     let mut total_results = 0;
-    
+
     for i in 0..25 {
         let result = jank_mul(matrix_size);
         total_results += result;
@@ -201,7 +207,7 @@ fn imperative_add(matrix_size: usize) -> i64 {
 
 pub fn bench_imperative_add(matrix_size: usize) -> f32 {
     let mut total_results = 0;
-    
+
     for i in 0..25 {
         let result = imperative_add(matrix_size);
         total_results += result;
@@ -217,7 +223,7 @@ fn jank_add(matrix_size: usize) -> i64 {
             for x in 0..matrix_size {
                 memory_buf.push(0.0f32);
             }
-        }    
+        }
     }
     let sw = Stopwatch::start_new();
     let arcss = Arc::new(memory_buf);
@@ -280,7 +286,7 @@ fn bench_jank_add(matrix_size: usize) -> f32 {
     println!("Benching Jank Add");
     let total_matrix_size = matrix_size * matrix_size;
     let mut total_results = 0;
-    
+
     for i in 0..25 {
         let result = jank_add(matrix_size);
         total_results += result;
@@ -290,10 +296,11 @@ fn bench_jank_add(matrix_size: usize) -> f32 {
 
 fn bench_add(matrix_size: usize) {
     let matrix_size = matrix_size;
-    println!("Starting Add Benchmark");
+    //println!("Starting Add Benchmark");
     let imperative_result = bench_imperative_add(matrix_size);
-    let jank_result = bench_jank_add(matrix_size);
-    println!("Time taken for imperative Add {}, jank Add {} for matrix of size {}", imperative_result, jank_result, matrix_size);
+    println!("{},", imperative_result);
+    //let jank_result = bench_jank_add(matrix_size);
+    //println!("Time taken for imperative Add {}, jank Add {} for matrix of size {}", imperative_result, jank_result, matrix_size);
 }
 
 fn bench_mul(matrix_size: usize) {
@@ -307,13 +314,239 @@ fn bench_mul(matrix_size: usize) {
     println!("Time taken for imperative mul {}, jank mul {} for matrix of size {}", imperative_result, jank_result, matrix_size);
 }
 
+#[derive(Clone)]
+struct Variable {
+    x: usize,
+    y: usize,
+    name: u64,
+    inputs: Vec<u64>,
+    dependant_opertions: HashSet<u64>
+}
+
+impl Variable {
+    pub fn new(x: usize, y: usize, name: u64) -> Variable {
+        Variable {
+            x,
+            y,
+            name,
+            inputs: vec![],
+            dependant_opertions: HashSet::new()
+        }
+    }
+
+    pub fn add_dependant_operation(&mut self, operation_name: u64) {
+        self.dependant_opertions.insert(operation_name);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Operation {
+    operator: Operator,
+    satisfied_input: HashSet<u64>,
+    inputs: HashSet<u64>,
+    output_variable: u64,
+}
+
+impl Operation {
+    pub fn new(operator: Operator, inputs: Vec<u64>, output_variable: u64) -> Operation {
+        let mut changed_inputs = HashSet::new();
+        inputs.iter().for_each(
+                |x|{
+                    changed_inputs.insert(*x);
+        }
+    );
+
+        Operation {
+            operator,
+            satisfied_input: HashSet::new(),
+            inputs: changed_inputs,
+            output_variable
+        }
+    }
+}
+
+
+struct Equation {
+    variables: HashMap<u64, Variable>,
+    operations: HashMap<u64, Operation>,
+    variable_count: usize
+}
+
+impl Equation {
+    pub fn new() -> Equation {
+        Equation {
+            variables: HashMap::new(),
+            operations: HashMap::new(),
+            variable_count: 0
+        }
+    }
+
+    pub fn new_variable(&mut self, x_size: usize, y_size: usize) -> u64 {
+        let name = self.variable_count as u64;
+        let variable = Variable::new(x_size, y_size, name);
+        self.variables.insert(name, variable);
+        self.variable_count += 1;
+        return name;
+    }
+
+    pub fn new_operation_in_graph(&mut self, lhs: u64, rhs: u64, operator: Operator) -> u64 {
+        let mut size= (0, 0);
+        match operator {
+            Operator::Add => {
+                let lhs = self.variables.get(&lhs).unwrap();
+                size.0 = lhs.x;
+                size.1 = lhs.y;
+            },
+            Operator::Mul => {
+
+            }
+        }
+        let output_variable = self.new_variable(size.0, size.1);
+
+        let inputs = vec![lhs, rhs];
+        let operation = Operation::new(operator, inputs, output_variable);
+        self.operations.insert(output_variable, operation);
+        {
+            self.variables.get_mut(&lhs).unwrap().add_dependant_operation(output_variable);
+        }
+        {
+            self.variables.get_mut(&rhs).unwrap().add_dependant_operation(output_variable);
+        }
+        return output_variable;
+    }
+
+    pub fn preform_add_operation(&mut self, inputs: &Vec<&Vec<f32>>, output_variable: &mut Vec<f32>) {
+        println!("Starting add operation");
+        for i in 0..output_variable.len() {
+            output_variable[i] = inputs[0][i] + inputs[1][i];
+        }
+    }
+
+    pub fn preform_mul_operation(&mut self, inputs: &Vec<&Vec<f32>>, output_variable: &mut Vec<f32>) {
+        println!("Starting mul operation");
+        for i in 0..output_variable.len() {
+            output_variable[i] = inputs[0][i] + inputs[1][i];
+        }
+    }
+
+    pub fn topilogical_sort(&mut self) -> Vec<Operation> {
+        println!("Starting Top sort");
+        let mut l = vec![];
+        let mut s = vec![];
+
+        let mut operations = self.operations.clone();
+        let variables = self.variables.clone();
+
+
+        let mut keys_to_remove = vec![];
+        for (k, v) in &operations {
+            println!("{:?}", v);
+            if v.inputs.len() == 0 {
+                keys_to_remove.push(k.clone());
+            }
+        }
+
+        for key in keys_to_remove {
+            s.push(operations.remove(&key).unwrap());
+        }
+        s.reverse();
+        while s.len() > 0 {
+            let first:Option<Operation> = s.pop();
+            match first {
+                Some(operation) => {
+                    let operation = operation;
+                    let variable: &Variable = &variables[&operation.output_variable];
+                    let mut modified_operations: Vec<u64> = vec![];
+                    for dependant_opertions in &variable.dependant_opertions {
+
+                        let dep_op = operations.get_mut(&dependant_opertions).unwrap();
+                        dep_op.inputs.remove(&operation.output_variable);
+                        dep_op.satisfied_input.insert(operation.output_variable);
+                        modified_operations.push(dep_op.output_variable);
+                    }
+
+                    l.push(operation);
+                    for id in modified_operations {
+                        if operations[&id].inputs.len() == 0 {
+                            s.push(operations.remove(&id).unwrap());
+                        }
+                    }
+                },
+                None => {
+                    break;
+                }
+            }
+        }
+
+        return l;
+    }
+
+    pub fn evaluate(&mut self, inputs: &mut HashMap<u64, Vec<f32>>) -> Vec<Vec<f32>> {
+
+        println!("Starting evaluation of funcrtion"); // TODO: allow function to be turned into a string
+        let mut final_output = vec![];
+        for (k, v) in inputs.iter() {
+            let variable = &self.variables[k];
+            for dp in &variable.dependant_opertions {
+                self.operations.get_mut(dp).unwrap().inputs.remove(k);
+                self.operations.get_mut(dp).unwrap().satisfied_input.insert(*k);
+            }
+        }
+
+        let mut sorted_opertions : Vec<Operation>= self.topilogical_sort();
+        sorted_opertions.reverse();
+        //Ok we should now know the size of everything that we need
+        //Allocate memory of that size
+        //Generate variable tokens
+        //and use those as the way to start our tokens
+
+        println!("{:?}", sorted_opertions);
+        while sorted_opertions.len() > 0 {
+            let op = sorted_opertions.pop().unwrap();
+            let mut operation_inputs = vec![];
+            let mut variable_sizes = vec![];
+            for variable in &op.satisfied_input {
+                let data_copy = &inputs[variable];
+                variable_sizes.push((self.variables[&variable].x, self.variables[&variable].y));
+                operation_inputs.push(data_copy);
+            }
+
+            match op.operator {
+                Operator::Add => {
+                    //TODO: let the size of the output be dictated by the inputs
+                    let mut output_memory: Vec<f32> = vec![0.0f32; variable_sizes[0].0 * variable_sizes[0].1];
+                    self.preform_add_operation(&operation_inputs, &mut output_memory);
+                    inputs.insert(op.output_variable, output_memory.clone());
+                    final_output = output_memory;
+                },
+                Operator::Mul => {
+
+                }
+            }
+        }
+        return vec![final_output];
+    }
+
+
+
+}
 
 fn main() {
-    
-    for i in 1..20{
-        bench_add(500 * i);
-        bench_mul(500 * i);
-    }
-    
-    
+    // y = (a + b) + d;
+    let mut equation = Equation::new();
+
+    let a = equation.new_variable(2, 1);
+    let b = equation.new_variable(2, 1);
+    let c = equation.new_operation_in_graph(a, b, Operator::Add);
+
+    let d = equation.new_variable(2, 1);
+    let _  = equation.new_operation_in_graph(d, c, Operator::Add);
+
+    let mut inputs = HashMap::new();
+    inputs.insert(a, vec![1.0, 1.0]);
+    inputs.insert(b, vec![1.0, 2.0]);
+    inputs.insert(d, vec![10.0, 2.0]);
+
+    let result = equation.evaluate(&mut inputs);
+    print!("{:?}", result)
 }
