@@ -320,7 +320,7 @@ struct Variable {
     y: usize,
     name: u64,
     inputs: Vec<u64>,
-    dependant_opertions: HashSet<u64>
+    dependant_opertions: Vec<u64>
 }
 
 impl Variable {
@@ -330,19 +330,19 @@ impl Variable {
             y,
             name,
             inputs: vec![],
-            dependant_opertions: HashSet::new()
+            dependant_opertions:  vec![]
         }
     }
 
     pub fn add_dependant_operation(&mut self, operation_name: u64) {
-        self.dependant_opertions.insert(operation_name);
+        self.dependant_opertions.push(operation_name);
     }
 }
 
 #[derive(Debug, Clone)]
 struct Operation {
     operator: Operator,
-    satisfied_input: HashSet<u64>,
+    satisfied_input: Vec<u64>,
     inputs: HashSet<u64>,
     output_variable: u64,
 }
@@ -358,7 +358,7 @@ impl Operation {
 
         Operation {
             operator,
-            satisfied_input: HashSet::new(),
+            satisfied_input: Vec::new(),
             inputs: changed_inputs,
             output_variable
         }
@@ -398,7 +398,10 @@ impl Equation {
                 size.1 = lhs.y;
             },
             Operator::Mul => {
-
+                let lhs = self.variables.get(&lhs).unwrap();
+                let rhs = self.variables.get(&rhs).unwrap();
+                size.0 = lhs.y;
+                size.1 = rhs.x;
             }
         }
         let output_variable = self.new_variable(size.0, size.1);
@@ -422,10 +425,21 @@ impl Equation {
         }
     }
 
-    pub fn preform_mul_operation(&mut self, inputs: &Vec<&Vec<f32>>, output_variable: &mut Vec<f32>) {
+    pub fn preform_mul_operation(&mut self, inputs: &Vec<&Vec<f32>>, output_variable: &mut Vec<f32>, output_x: usize, output_y: usize, shared_z: usize) {
+        //TODO: Get the inverse of the the second input, this would allow for reading it in a form that takes advantage of cache conference
         println!("Starting mul operation");
-        for i in 0..output_variable.len() {
-            output_variable[i] = inputs[0][i] + inputs[1][i];
+        for y in 0..output_y {
+            for x in 0..output_x {
+
+                let mut running_total = 0.0;
+                for z in 0..shared_z {
+                    let a_index = z + (shared_z * x);
+                    let b_index = z + (shared_z * y);
+                    running_total += inputs[0][a_index] * inputs[1][b_index];
+                }
+                let index = x + y * output_y;//All of these are flat buffers, so we need to calculate what the the final index
+                output_variable[index] = running_total;
+            }
         }
     }
 
@@ -440,7 +454,6 @@ impl Equation {
 
         let mut keys_to_remove = vec![];
         for (k, v) in &operations {
-            println!("{:?}", v);
             if v.inputs.len() == 0 {
                 keys_to_remove.push(k.clone());
             }
@@ -461,7 +474,7 @@ impl Equation {
 
                         let dep_op = operations.get_mut(&dependant_opertions).unwrap();
                         dep_op.inputs.remove(&operation.output_variable);
-                        dep_op.satisfied_input.insert(operation.output_variable);
+                        dep_op.satisfied_input.push(operation.output_variable);
                         modified_operations.push(dep_op.output_variable);
                     }
 
@@ -483,13 +496,13 @@ impl Equation {
 
     pub fn evaluate(&mut self, inputs: &mut HashMap<u64, Vec<f32>>) -> Vec<Vec<f32>> {
 
-        println!("Starting evaluation of funcrtion"); // TODO: allow function to be turned into a string
+        println!("Starting evaluation of function");
         let mut final_output = vec![];
         for (k, v) in inputs.iter() {
             let variable = &self.variables[k];
             for dp in &variable.dependant_opertions {
                 self.operations.get_mut(dp).unwrap().inputs.remove(k);
-                self.operations.get_mut(dp).unwrap().satisfied_input.insert(*k);
+                self.operations.get_mut(dp).unwrap().satisfied_input.push(*k);
             }
         }
 
@@ -500,7 +513,6 @@ impl Equation {
         //Generate variable tokens
         //and use those as the way to start our tokens
 
-        println!("{:?}", sorted_opertions);
         while sorted_opertions.len() > 0 {
             let op = sorted_opertions.pop().unwrap();
             let mut operation_inputs = vec![];
@@ -513,14 +525,16 @@ impl Equation {
 
             match op.operator {
                 Operator::Add => {
-                    //TODO: let the size of the output be dictated by the inputs
                     let mut output_memory: Vec<f32> = vec![0.0f32; variable_sizes[0].0 * variable_sizes[0].1];
                     self.preform_add_operation(&operation_inputs, &mut output_memory);
                     inputs.insert(op.output_variable, output_memory.clone());
                     final_output = output_memory;
                 },
                 Operator::Mul => {
-
+                    let mut output_memory: Vec<f32> = vec![0.0f32; variable_sizes[0].0 * variable_sizes[1].1];
+                    self.preform_mul_operation(&operation_inputs, &mut output_memory, variable_sizes[0].0,  variable_sizes[1].1, variable_sizes[0].1);
+                    inputs.insert(op.output_variable, output_memory.clone());
+                    final_output = output_memory;
                 }
             }
         }
@@ -532,20 +546,28 @@ impl Equation {
 }
 
 fn main() {
-    // y = (a + b) + d;
+    // y = (((a + b) + d) * f) * i);
     let mut equation = Equation::new();
 
-    let a = equation.new_variable(2, 1);
-    let b = equation.new_variable(2, 1);
+    let a = equation.new_variable(2, 2);
+    let b = equation.new_variable(2, 2);
     let c = equation.new_operation_in_graph(a, b, Operator::Add);
 
-    let d = equation.new_variable(2, 1);
-    let _  = equation.new_operation_in_graph(d, c, Operator::Add);
+    let d = equation.new_variable(2, 2);
+    let e  = equation.new_operation_in_graph(d, c, Operator::Add);
+
+    let f = equation.new_variable(2, 2);
+    let g = equation.new_operation_in_graph(e, f, Operator::Mul);
+
+    let i = equation.new_variable(2, 2);
+    let _y = equation.new_operation_in_graph(g, i, Operator::Mul);
 
     let mut inputs = HashMap::new();
-    inputs.insert(a, vec![1.0, 1.0]);
-    inputs.insert(b, vec![1.0, 2.0]);
-    inputs.insert(d, vec![10.0, 2.0]);
+    inputs.insert(a, vec![1.0, 1.0, 1.0, 1.0]);
+    inputs.insert(b, vec![1.0, 2.0, 1.0, 1.0]);
+    inputs.insert(d, vec![10.0, 2.0, 10.0, 2.0]);
+    inputs.insert(f, vec![10.0, 10.0, 10.0, 10.0]);
+    inputs.insert(i, vec![2.0, 2.0, 2.0, 2.0]);
 
     let result = equation.evaluate(&mut inputs);
     print!("{:?}", result)
