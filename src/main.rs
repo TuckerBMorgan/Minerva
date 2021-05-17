@@ -7,7 +7,24 @@ enum Operator {
     Mul
 }
 
+#[derive(Debug, Copy, Clone)]
+struct MemoryToken {
+    x_dim: usize,
+    y_dim: usize,
+    start: usize,
+    size: usize
+}
 
+impl MemoryToken {
+    pub fn new(x_dim: usize, y_dim: usize, start: usize) -> MemoryToken {
+        MemoryToken {
+            x_dim,
+            y_dim,
+            start,
+            size: x_dim * y_dim
+        }
+    }
+}
 
 #[derive(Clone)]
 struct Variable {
@@ -64,7 +81,9 @@ impl Operation {
 struct Equation {
     variables: HashMap<u64, Variable>,
     operations: HashMap<u64, Operation>,
-    variable_count: usize
+    memory_token: HashMap<u64, MemoryToken>,
+    variable_count: usize,
+    memory: Vec<f32>
 }
 
 impl Equation {
@@ -72,15 +91,25 @@ impl Equation {
         Equation {
             variables: HashMap::new(),
             operations: HashMap::new(),
-            variable_count: 0
+            memory_token: HashMap::new(),
+            variable_count: 0,
+            memory: vec![]
         }
     }
 
     pub fn new_variable(&mut self, x_size: usize, y_size: usize) -> u64 {
+        //A name is a UID for any amount of data that gets either feed into, or is computed as part of the equation
         let name = self.variable_count as u64;
+
+        //A variable is a node in the graph
         let variable = Variable::new(x_size, y_size, name);
         self.variables.insert(name, variable);
         self.variable_count += 1;
+
+        //This represents the actually values that make up the variable
+        let memory_token = MemoryToken::new(x_size, y_size, self.memory.len());
+        self.memory.append(&mut vec![0.0;x_size * y_size]);
+        self.memory_token.insert(name, memory_token);
         return name;
     }
 
@@ -113,14 +142,14 @@ impl Equation {
         return output_variable;
     }
 
-    pub fn preform_add_operation(&mut self, inputs: &Vec<&Vec<f32>>, output_variable: &mut Vec<f32>) {
+    pub fn preform_add_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
         println!("Starting add operation");
-        for i in 0..output_variable.len() {
-            output_variable[i] = inputs[0][i] + inputs[1][i];
+        for i in 0..output_variable.size {
+            self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] + self.memory[i + inputs[1].start];
         }
     }
 
-    pub fn preform_mul_operation(&mut self, inputs: &Vec<&Vec<f32>>, output_variable: &mut Vec<f32>, output_x: usize, output_y: usize, shared_z: usize) {
+    pub fn preform_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_token: MemoryToken, output_x: usize, output_y: usize, shared_z: usize) {
         //TODO: Get the inverse of the the second input, this would allow for reading it in a form that takes advantage of cache conference
         println!("Starting mul operation");
         for y in 0..output_y {
@@ -130,10 +159,10 @@ impl Equation {
                 for z in 0..shared_z {
                     let a_index = z + (shared_z * x);
                     let b_index = z + (shared_z * y);
-                    running_total += inputs[0][a_index] * inputs[1][b_index];
+                    running_total += self.memory[inputs[0].start + a_index] * self.memory[inputs[1].start + b_index];
                 }
                 let index = x + y * output_y;//All of these are flat buffers, so we need to calculate what the the final index
-                output_variable[index] = running_total;
+                self.memory[ output_token.start + index] = running_total;
             }
         }
     }
@@ -189,10 +218,21 @@ impl Equation {
         return l;
     }
 
-    pub fn evaluate(&mut self, inputs: &mut HashMap<u64, Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn fill_in_inputs(&mut self, inputs: &mut HashMap<u64, Vec<f32>>) {
+        for (k, v) in inputs.iter() {
+            let memory_token = self.memory_token[k];
+            for i in 0..memory_token.size {
+                self.memory[memory_token.start + i] = v[i];
+            }
+        }
+    }
+
+    pub fn evaluate(&mut self, inputs: &mut HashMap<u64, Vec<f32>>) {
 
         println!("Starting evaluation of function");
-        let mut final_output = vec![];
+        println!("Filling in inputs");
+        self.fill_in_inputs(inputs);
+       // let mut final_output = vec![];
         for (k, _v) in inputs.iter() {
             let variable = &self.variables[k];
             for dp in &variable.dependant_opertions {
@@ -210,34 +250,34 @@ impl Equation {
 
         while sorted_opertions.len() > 0 {
             let op = sorted_opertions.pop().unwrap();
-            let mut operation_inputs = vec![];
-            let mut variable_sizes = vec![];
+            let mut variable_tokens = vec![];
             for variable in &op.satisfied_input {
-                let data_copy = &inputs[variable];
-                variable_sizes.push((self.variables[&variable].x, self.variables[&variable].y));
-                operation_inputs.push(data_copy);
+                variable_tokens.push(self.memory_token[&variable]);
             }
 
             match op.operator {
                 Operator::Add => {
-                    let mut output_memory: Vec<f32> = vec![0.0f32; variable_sizes[0].0 * variable_sizes[0].1];
-                    self.preform_add_operation(&operation_inputs, &mut output_memory);
-                    inputs.insert(op.output_variable, output_memory.clone());
-                    final_output = output_memory;
+                    self.preform_add_operation(variable_tokens, self.memory_token[&op.output_variable]);
                 },
                 Operator::Mul => {
-                    let mut output_memory: Vec<f32> = vec![0.0f32; variable_sizes[0].0 * variable_sizes[1].1];
-                    self.preform_mul_operation(&operation_inputs, &mut output_memory, variable_sizes[0].0,  variable_sizes[1].1, variable_sizes[0].1);
-                    inputs.insert(op.output_variable, output_memory.clone());
-                    final_output = output_memory;
+                    let output_token = self.memory_token[&op.output_variable];
+                    let y_dim = variable_tokens[0].y_dim;
+                    self.preform_mul_operation(variable_tokens, output_token, output_token.x_dim, output_token.y_dim, y_dim);
                 }
             }
         }
-        return vec![final_output];
     }
 
+    pub fn get_variable(&self, variable_name: u64) -> Vec<f32> {
+        //TODO: make this not trully N operation I know we can do better
+        let token = self.memory_token[&variable_name];
+        let mut return_memory = vec![];
+        for i in 0..token.size {
+            return_memory.push(self.memory[token.start + i]);
+        }
+        return return_memory;
 
-
+    }
 }
 
 fn main() {
@@ -255,15 +295,18 @@ fn main() {
     let g = equation.new_operation_in_graph(e, f, Operator::Mul);
 
     let i = equation.new_variable(2, 2);
-    let _y = equation.new_operation_in_graph(g, i, Operator::Mul);
+    let y = equation.new_operation_in_graph(g, i, Operator::Mul);
 
     let mut inputs = HashMap::new();
     inputs.insert(a, vec![1.0, 1.0, 1.0, 1.0]);
     inputs.insert(b, vec![1.0, 2.0, 1.0, 1.0]);
+
     inputs.insert(d, vec![10.0, 2.0, 10.0, 2.0]);
+
     inputs.insert(f, vec![10.0, 10.0, 10.0, 10.0]);
+
     inputs.insert(i, vec![2.0, 2.0, 2.0, 2.0]);
 
-    let result = equation.evaluate(&mut inputs);
-    print!("{:?}", result)
+    equation.evaluate(&mut inputs);
+    print!("{:?}", equation.get_variable(y));
 }
