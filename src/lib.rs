@@ -1,12 +1,9 @@
-
-
-
-
+#![allow(dead_code)]
 mod equation;
 
 #[cfg(test)]
 pub mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{HashMap};
 
     pub use crate::equation::*;
 
@@ -44,13 +41,13 @@ pub mod tests {
 
     #[test]
     fn allocate_equation_test() {
-        let mut equation = Equation::new();
+        let _equation = Equation::new();
     }
 
     #[test]
     fn add_variable_to_equation_test() {
         let mut equation = Equation::new();
-        let a = equation.new_variable(2, 2);
+        let _a = equation.new_variable(2, 2);
 
     }
 
@@ -153,11 +150,36 @@ pub mod tests {
         let result = equation.get_variable(c);
         assert!(result == vec![2.0, 2.0,
                                3.0, 2.0]);
-
         let result = equation.get_variable(e);
         println!("{:?}", result);
         assert!(result == vec![24.0, 28.0,
                                29.0, 34.0]);
+    }
 
+
+    fn sigmoid(x: f32) -> f32 {
+        1.0 / (1.0 + (-x).exp())
+    }
+
+    #[test]
+    fn simple_mapping_test() {
+        let mut equation = Equation::new();
+        let a = equation.new_variable(2, 2);
+        let b = equation.new_mapping_operation(a, Box::new(sigmoid)).unwrap();
+
+        let mut inputs = HashMap::new();
+        inputs.insert(a, vec![1.0, 0.0, 5.0, 0.75]);
+        equation.evaluate(&mut inputs);
+
+        let result = equation.get_variable(b);
+        let expected = vec![0.731, 0.500, 0.993, 0.679];
+
+        let mut total_diff = 0.0f32;
+
+        for i in 0..4 {
+            total_diff += (result[i] - expected[i]).abs();
+        }
+
+        assert!(total_diff < 0.01f32);
     }
 }
