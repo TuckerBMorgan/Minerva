@@ -9,7 +9,7 @@ pub mod tests {
 
     #[test]
     fn main() {
-        // y = (((a + b) + d) * f) * i);
+
         let mut equation = Equation::new();
 
         let a = equation.new_variable(2, 2);
@@ -20,10 +20,10 @@ pub mod tests {
         let e  = equation.new_operation_in_graph(vec![d, c], Operator::Add).unwrap();
 
         let f = equation.new_variable(2, 2);
-        let g = equation.new_operation_in_graph(vec![e, f], Operator::Mul).unwrap();
+        let g = equation.new_operation_in_graph(vec![e, f], Operator::MatrixMul).unwrap();
 
         let i = equation.new_variable(2, 2);
-        let y = equation.new_operation_in_graph(vec![g, i], Operator::Mul).unwrap();
+        let y = equation.new_operation_in_graph(vec![g, i], Operator::MatrixMul).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 1.0, 1.0, 1.0]);
@@ -87,7 +87,7 @@ pub mod tests {
 
         let a = equation.new_variable(2, 2);
         let b = equation.new_variable(2, 2);
-        let c = equation.new_operation_in_graph(vec![a, b], Operator::Mul).unwrap();
+        let c = equation.new_operation_in_graph(vec![a, b], Operator::MatrixMul).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 2.0,
@@ -109,7 +109,7 @@ pub mod tests {
 
         let a = equation.new_variable(2, 3);
         let b = equation.new_variable(3, 2);
-        let c = equation.new_operation_in_graph(vec![a, b], Operator::Mul).unwrap();
+        let c = equation.new_operation_in_graph(vec![a, b], Operator::MatrixMul).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 2.0, 3.0,
@@ -135,7 +135,7 @@ pub mod tests {
         let c = equation.new_operation_in_graph(vec![a, b], Operator::Add).unwrap();
 
         let d = equation.new_variable(2, 2);
-        let e = equation.new_operation_in_graph(vec![c, d], Operator::Mul).unwrap();
+        let e = equation.new_operation_in_graph(vec![c, d], Operator::MatrixMul).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 1.0,
@@ -161,6 +161,8 @@ pub mod tests {
         1.0 / (1.0 + (-x).exp())
     }
 
+
+
     #[test]
     fn simple_mapping_test() {
         let mut equation = Equation::new();
@@ -181,5 +183,72 @@ pub mod tests {
         }
 
         assert!(total_diff < 0.01f32);
+    }
+
+    fn sigmoid_prime(x: f32) -> f32 {
+        sigmoid(x) * (1.0f32 - sigmoid(x))
+    }
+
+    #[test]
+    fn simple_dif_operation_test() {
+        let mut equation = Equation::new();
+        let a = equation.new_variable(2, 2);
+        let b = equation.new_variable(2, 2);
+        let c = equation.new_operation_in_graph(vec![a, b], Operator::Dif).unwrap();
+
+        let mut inputs = HashMap::new();
+        inputs.insert(a, vec![1.0, 1.0,
+                             1.0, 1.0]);
+        inputs.insert(b, vec![1.0, 1.0,
+                              1.0, 1.0]);
+        equation.evaluate(&mut inputs);
+
+        let result = equation.get_variable(c);
+        assert!(result == vec![0.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn simple_element_wise_mul_operation_test() {
+        let mut equation = Equation::new();
+        let a = equation.new_variable(2, 2);
+        let b = equation.new_variable(2, 2);
+        let c = equation.new_operation_in_graph(vec![a, b], Operator::ElementWiseMul).unwrap();
+
+        let mut inputs = HashMap::new();
+        inputs.insert(a, vec![1.0, 1.0,
+                             1.0, 1.0]);
+        inputs.insert(b, vec![2.0, 2.0,
+                              2.0, 2.0]);
+        equation.evaluate(&mut inputs);
+
+        let result = equation.get_variable(c);
+        assert!(result == vec![2.0, 2.0, 2.0, 2.0]);
+    }
+
+    #[test]
+    fn basic_nn() {
+
+        let mut feed_foward = Equation::new();
+
+        let input = feed_foward.new_variable(10, 1);
+
+        //Forward Propogation
+        //First layer
+        let first_dense_weight = feed_foward.new_variable(1, 10);
+        let first_dense_layer = feed_foward.new_operation_in_graph(vec![input, first_dense_weight], Operator::MatrixMul).unwrap();
+        let first_dense_layer_activation = feed_foward.new_mapping_operation(first_dense_layer, Box::new(sigmoid)).unwrap();
+
+        //Backprop
+        //Calculating loss
+        let expected = feed_foward.new_variable(10, 10);
+        let loss = feed_foward.new_operation_in_graph(vec![first_dense_layer_activation, expected], Operator::Dif).unwrap();
+        let derivative_of_loss = feed_foward.new_mapping_operation(loss, Box::new(sigmoid_prime)).unwrap();
+
+        let combined_loss_and_error = feed_foward.new_operation_in_graph(vec![loss, derivative_of_loss], Operator::ElementWiseMul).unwrap();
+
+        let mut inputs = HashMap::new();
+        inputs.insert(input, vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+        feed_foward.evaluate(&mut inputs);
+
     }
 }

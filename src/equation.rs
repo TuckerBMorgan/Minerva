@@ -1,10 +1,49 @@
 use std::collections::{HashMap, HashSet};
+use std::cmp::Ordering;
+
+#[derive(Debug, Copy, Clone, Hash, Eq)]
+pub struct VariableToken {
+    name: u64,
+    x_size: usize,
+    y_size: usize
+
+}
+
+impl VariableToken {
+    pub fn new(name: u64, x_size: usize, y_size: usize) -> VariableToken {
+        VariableToken {
+            name,
+            x_size,
+            y_size
+        }
+    }
+}
+
+impl Ord for VariableToken {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for VariableToken {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for VariableToken {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum Operator {
     Add,
-    Mul,
-    Map
+    MatrixMul,
+    ElementWiseMul,
+    Map,
+    Dif
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -32,7 +71,7 @@ pub struct Variable {
     y: usize,
     name: u64,
     inputs: Vec<u64>,
-    dependant_opertions: Vec<u64>
+    dependant_opertions: Vec<VariableToken>
 }
 
 impl Variable {
@@ -46,7 +85,7 @@ impl Variable {
         }
     }
 
-    pub fn add_dependant_operation(&mut self, operation_name: u64) {
+    pub fn add_dependant_operation(&mut self, operation_name: VariableToken) {
         self.dependant_opertions.push(operation_name);
     }
 }
@@ -54,14 +93,14 @@ impl Variable {
 #[derive(Debug, Clone)]
 pub struct Operation {
     operator: Operator,
-    satisfied_input: Vec<u64>,
-    inputs: HashSet<u64>,
-    inputs_in_order: Vec<u64>,
-    output_variable: u64
+    satisfied_input: Vec<VariableToken>,
+    inputs: HashSet<VariableToken>,
+    inputs_in_order: Vec<VariableToken>,
+    output_variable: VariableToken
 }
 
 impl Operation {
-    pub fn new(operator: Operator, inputs: Vec<u64>, output_variable: u64) -> Operation {
+    pub fn new(operator: Operator, inputs: Vec<VariableToken>, output_variable: VariableToken) -> Operation {
         let mut changed_inputs = HashSet::new();
         inputs.iter().for_each(
                 |x|{
@@ -81,10 +120,10 @@ impl Operation {
 
 
 pub struct Equation {
-    variables: HashMap<u64, Variable>,
-    operations: HashMap<u64, Operation>,
-    memory_token: HashMap<u64, MemoryToken>,
-    mapping_functions: HashMap<u64, Box<dyn Fn(f32) -> f32>>,
+    variables: HashMap<VariableToken, Variable>,
+    operations: HashMap<VariableToken, Operation>,
+    memory_token: HashMap<VariableToken, MemoryToken>,
+    mapping_functions: HashMap<VariableToken, Box<dyn Fn(f32) -> f32>>,
     variable_count: usize,
     memory: Vec<f32>
 }
@@ -102,19 +141,20 @@ impl Equation {
     }
 
     //Minerva is Coloum major lib
-    pub fn new_variable(&mut self, y_size: usize, x_size: usize) -> u64 {
+    pub fn new_variable(&mut self, y_size: usize, x_size: usize) -> VariableToken {
         //A name is a UID for any amount of data that gets either feed into, or is computed as part of the equation
         let name = self.get_new_name();
-
+        let variable_token = VariableToken::new(name, x_size, y_size);
         //A variable is a node in the graph
         let variable = Variable::new(x_size, y_size, name);
-        self.variables.insert(name, variable);
+        self.variables.insert(variable_token, variable);
 
         //This represents the actually values that make up the variable
         let memory_token = MemoryToken::new(x_size, y_size, self.memory.len());
         self.memory.append(&mut vec![0.0;x_size * y_size]);
-        self.memory_token.insert(name, memory_token);
-        return name;
+        self.memory_token.insert(variable_token, memory_token);
+
+        return variable_token;
     }
 
     fn get_new_name(&mut self) -> u64 {
@@ -123,7 +163,7 @@ impl Equation {
         return value_to_return;
     }
 
-    pub fn new_operation_in_graph(&mut self, operands: Vec<u64>, operator: Operator) -> Result<u64, &'static str> {
+    pub fn new_operation_in_graph(&mut self, operands: Vec<VariableToken>, operator: Operator) -> Result<VariableToken, &'static str> {
         let mut size= (0, 0);
         match operator {
             Operator::Add => {
@@ -139,7 +179,33 @@ impl Equation {
                 size.0 = lhs.x;
                 size.1 = lhs.y;
             },
-            Operator::Mul => {
+            Operator::ElementWiseMul => {
+                if operands.len() != 2 {
+                    return Err("Incorrect number of operands for Element Wise Mul opertions, want 2");
+                }
+                let lhs = self.variables.get(&operands[0]).unwrap();
+                let rhs = self.variables.get(&operands[1]).unwrap();
+                if lhs.x != rhs.x || lhs.y != rhs.y {
+                    return Err("You may only Element Wise Mul matrices of the same size");
+                }
+                size.0 = lhs.x;
+                size.1 = lhs.y;
+
+            },
+            Operator::Dif => {
+                if operands.len() != 2 {
+                    return Err("Incorrect number of operands for a diff operations, want 2");
+                }
+
+                let lhs = self.variables.get(&operands[0]).unwrap();
+                let rhs = self.variables.get(&operands[1]).unwrap();
+                if lhs.x != rhs.x || lhs.y != rhs.y {
+                    return Err("You may only diff matrices of the same size");
+                }
+                size.0 = lhs.x;
+                size.1 = lhs.y;
+            },
+            Operator::MatrixMul => {
                 if operands.len() != 2 {
                     return Err("Incorrect number of operands for mul operations, want 2");
                 }
@@ -170,7 +236,7 @@ impl Equation {
         return Ok(output_variable);
     }
 
-    pub fn new_mapping_operation(&mut self, operand: u64, function: Box<dyn Fn(f32) -> f32>) -> Result<u64, &'static str> {
+    pub fn new_mapping_operation(&mut self, operand: VariableToken, function: Box<dyn Fn(f32) -> f32>) -> Result<VariableToken, &'static str> {
         //Copy the mapping function in
 
 
@@ -196,6 +262,20 @@ impl Equation {
         }
     }
 
+    fn preform_dif_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
+        println!("Starting add operation");
+        for i in 0..output_variable.size {
+            self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] - self.memory[i + inputs[1].start];
+        }
+    }
+
+    fn preform_element_wise_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
+        println!("Starting add operation");
+        for i in 0..output_variable.size {
+            self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] * self.memory[i + inputs[1].start];
+        }
+    }
+
     fn preform_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_token: MemoryToken, output_x: usize, output_y: usize, shared_z: usize) {
         //TODO: Get the inverse of the the second input, this would allow for reading it in a form that takes advantage of cache conference
         println!("Starting mul operation");
@@ -213,7 +293,7 @@ impl Equation {
         }
     }
 
-    fn preform_map_operation(&mut self, input: MemoryToken, output: MemoryToken, mapping_function: u64) {
+    fn preform_map_operation(&mut self, input: MemoryToken, output: MemoryToken, mapping_function: VariableToken) {
         for i in 0..output.size {
             self.memory[output.start + i] = (*self.mapping_functions[&mapping_function])(self.memory[input.start + i]);
         }
@@ -245,7 +325,7 @@ impl Equation {
                 Some(operation) => {
                     let operation = operation;
                     let variable: &Variable = &variables[&operation.output_variable];
-                    let mut modified_operations: Vec<u64> = vec![];
+                    let mut modified_operations: Vec<VariableToken> = vec![];
                     for dependant_opertions in &variable.dependant_opertions {
 
                         let dep_op = operations.get_mut(&dependant_opertions).unwrap();
@@ -270,7 +350,7 @@ impl Equation {
         return l;
     }
 
-    pub fn fill_in_inputs(&mut self, inputs: &mut HashMap<u64, Vec<f32>>) {
+    pub fn fill_in_inputs(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
         for (k, v) in inputs.iter() {
             let memory_token = self.memory_token[k];
             for i in 0..memory_token.size {
@@ -279,12 +359,12 @@ impl Equation {
         }
     }
 
-    pub fn evaluate(&mut self, inputs: &mut HashMap<u64, Vec<f32>>) {
+    pub fn evaluate(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
 
         println!("Starting evaluation of function");
         println!("Filling in inputs");
         self.fill_in_inputs(inputs);
-        let mut keys : Vec<u64> = inputs.keys().map(|x|*x).collect();
+        let mut keys : Vec<VariableToken> = inputs.keys().map(|x|*x).collect();
         keys.sort();
 
         for k in keys {
@@ -309,7 +389,13 @@ impl Equation {
                 Operator::Add => {
                     self.preform_add_operation(variable_tokens, self.memory_token[&op.output_variable]);
                 },
-                Operator::Mul => {
+                Operator::Dif => {
+                    self.preform_dif_operation(variable_tokens, self.memory_token[&op.output_variable]);
+                },
+                Operator::ElementWiseMul => {
+                    self.preform_element_wise_mul_operation(variable_tokens, self.memory_token[&op.output_variable]);
+                },
+                Operator::MatrixMul => {
                     let output_token = self.memory_token[&op.output_variable];
                     let y_dim = variable_tokens[0].x_dim;
                     self.preform_mul_operation(variable_tokens, output_token, output_token.x_dim, output_token.y_dim, y_dim);
@@ -323,7 +409,18 @@ impl Equation {
         }
     }
 
-    pub fn get_variable(&self, variable_name: u64) -> Vec<f32> {
+    pub fn set_variable(&mut self, variable_name: VariableToken, values: &Vec<f32>) {
+        let token = self.memory_token[&variable_name];
+        for i in 0..token.size {
+            self.memory[token.start + i] = values[i];
+        }
+    }
+
+    pub fn random_init_variable(&mut self, variable_name: VariableToken) {
+
+    }
+
+    pub fn get_variable(&self, variable_name: VariableToken) -> Vec<f32> {
         //TODO: make this not trully N operation I know we can do better
         let token = self.memory_token[&variable_name];
         let mut return_memory = vec![];
