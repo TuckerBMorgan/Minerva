@@ -244,11 +244,11 @@ pub mod tests {
         let loss = feed_foward.new_operation_in_graph(vec![first_dense_layer_activation, expected], Operator::Dif).unwrap();
         let derivative_of_loss = feed_foward.new_mapping_operation(loss, Box::new(sigmoid_prime)).unwrap();
 
-        let combined_loss_and_error = feed_foward.new_operation_in_graph(vec![loss, derivative_of_loss], Operator::ElementWiseMul).unwrap();
+        let delta = feed_foward.new_operation_in_graph(vec![loss, derivative_of_loss], Operator::ElementWiseMul).unwrap();
+        let error = feed_foward.new_operation_in_graph(vec![error, delta], Operator::MatrixMul).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(input, vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
         feed_foward.evaluate(&mut inputs);
-
     }
 }
