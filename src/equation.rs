@@ -5,7 +5,8 @@ use std::cmp::Ordering;
 pub struct VariableToken {
     name: u64,
     x_size: usize,
-    y_size: usize
+    y_size: usize,
+    is_transposed: bool
 
 }
 
@@ -14,9 +15,17 @@ impl VariableToken {
         VariableToken {
             name,
             x_size,
-            y_size
+            y_size,
+            is_transposed: false
         }
     }
+
+    pub fn transposed(&mut self) -> VariableToken  {
+        let mut new_token = self.copy();
+        new_token.is_transposed = true;
+        return new_token;
+    }
+
 }
 
 impl Ord for VariableToken {
@@ -417,7 +426,11 @@ impl Equation {
     }
 
     pub fn random_init_variable(&mut self, variable_name: VariableToken) {
-
+        let mut rng = rand::thread_rng();
+        let token = self.memory_token[&variable_name];
+        for i in 0..token.size {
+            self.memory[token.start + i] = rng.gen();
+        }
     }
 
     pub fn get_variable(&self, variable_name: VariableToken) -> Vec<f32> {

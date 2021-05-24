@@ -245,7 +245,7 @@ pub mod tests {
         let derivative_of_loss = feed_foward.new_mapping_operation(loss, Box::new(sigmoid_prime)).unwrap();
 
         let delta = feed_foward.new_operation_in_graph(vec![loss, derivative_of_loss], Operator::ElementWiseMul).unwrap();
-        let error = feed_foward.new_operation_in_graph(vec![error, delta], Operator::MatrixMul).unwrap();
+        let error = feed_foward.new_operation_in_graph(vec![error, delta.transposed()], Operator::MatrixMul).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(input, vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
