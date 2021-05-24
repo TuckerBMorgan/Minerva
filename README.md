@@ -6,6 +6,6 @@ agnostic way
 
 
 Roadmap:
-    Integrate Rust GPU to allow you to write and deploy your own kernals on the GPU
+    Integrate Rust GPU to allow you to write and deploy your own kernels on the GPU
     Allow the equations to introspect it's workload and make choices on where it should run
-        it's current workload for best preformance.
+        it's current workload for best performance.
