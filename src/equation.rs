@@ -4,10 +4,8 @@ use std::cmp::Ordering;
 #[derive(Debug, Copy, Clone, Hash, Eq)]
 pub struct VariableToken {
     name: u64,
-    x_size: usize,
-    y_size: usize,
-    is_transposed: bool
-
+    pub x_size: usize,
+    pub y_size: usize
 }
 
 impl VariableToken {
@@ -15,17 +13,9 @@ impl VariableToken {
         VariableToken {
             name,
             x_size,
-            y_size,
-            is_transposed: false
+            y_size
         }
     }
-
-    pub fn transposed(&mut self) -> VariableToken  {
-        let mut new_token = self.copy();
-        new_token.is_transposed = true;
-        return new_token;
-    }
-
 }
 
 impl Ord for VariableToken {
@@ -52,7 +42,8 @@ pub enum Operator {
     MatrixMul,
     ElementWiseMul,
     Map,
-    Dif
+    Dif,
+    Scalar
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -74,7 +65,7 @@ impl MemoryToken {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Variable {
     x: usize,
     y: usize,
@@ -134,7 +125,7 @@ pub struct Equation {
     memory_token: HashMap<VariableToken, MemoryToken>,
     mapping_functions: HashMap<VariableToken, Box<dyn Fn(f32) -> f32>>,
     variable_count: usize,
-    memory: Vec<f32>
+    memory: Vec<f32>,
 }
 
 impl Equation {
@@ -145,11 +136,11 @@ impl Equation {
             memory_token: HashMap::new(),
             mapping_functions: HashMap::new(),
             variable_count: 0,
-            memory: vec![]
+            memory: vec![],
         }
     }
 
-    //Minerva is Coloum major lib
+    //Minerva is Col major lib
     pub fn new_variable(&mut self, y_size: usize, x_size: usize) -> VariableToken {
         //A name is a UID for any amount of data that gets either feed into, or is computed as part of the equation
         let name = self.get_new_name();
@@ -164,6 +155,12 @@ impl Equation {
         self.memory_token.insert(variable_token, memory_token);
 
         return variable_token;
+    }
+
+    pub fn transpose(&mut self, variable_token: VariableToken) -> VariableToken {
+        let new_variable_token = self.new_variable(variable_token.x_size, variable_token.y_size);
+        self.copy_and_transpose_variable(self.memory_token[&variable_token], self.memory_token[&new_variable_token]);
+        return new_variable_token;
     }
 
     fn get_new_name(&mut self) -> u64 {
@@ -220,18 +217,31 @@ impl Equation {
                 }
                 let lhs = self.variables.get(&operands[0]).unwrap();
                 let rhs = self.variables.get(&operands[1]).unwrap();
-                if lhs.y != rhs.x {
+                if lhs.x != rhs.y {
                     return Err("Incomptabile matrices");
                 }
                 size.0 = lhs.y;
                 size.1 = rhs.x;
             },
             Operator::Map => {
-                if operands.len() != 2 {
+                if operands.len() != 1 {
                     return Err("Incorrect number of operands for map operations, want 1");
                 }
 
                 let lhs = self.variables.get(&operands[0]).unwrap();
+                size.0 = lhs.x;
+                size.1 = lhs.y;
+            },
+            Operator::Scalar => {
+                if operands.len() != 2 {
+                    return Err("Incorrect number of operands for Element Wise Mul opertions, want 2");
+                }
+
+                let lhs = self.variables.get(&operands[0]).unwrap();
+                let rhs = self.variables.get(&operands[1]).unwrap();
+                if rhs.x != 1 || rhs.y != 1 {
+                    return Err("The right hand side of a Scalar op must be a matrix of 1x1 size");
+                }
                 size.0 = lhs.x;
                 size.1 = lhs.y;
             }
@@ -245,6 +255,7 @@ impl Equation {
         return Ok(output_variable);
     }
 
+    #[inline(always)]
     pub fn new_mapping_operation(&mut self, operand: VariableToken, function: Box<dyn Fn(f32) -> f32>) -> Result<VariableToken, &'static str> {
         //Copy the mapping function in
 
@@ -264,6 +275,7 @@ impl Equation {
         return Ok(output_variable);
     }
 
+    #[inline(always)]
     fn preform_add_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
         println!("Starting add operation");
         for i in 0..output_variable.size {
@@ -271,6 +283,7 @@ impl Equation {
         }
     }
 
+    #[inline(always)]
     fn preform_dif_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
         println!("Starting add operation");
         for i in 0..output_variable.size {
@@ -278,6 +291,7 @@ impl Equation {
         }
     }
 
+    #[inline(always)]
     fn preform_element_wise_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
         println!("Starting add operation");
         for i in 0..output_variable.size {
@@ -285,6 +299,7 @@ impl Equation {
         }
     }
 
+    #[inline(always)]
     fn preform_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_token: MemoryToken, output_x: usize, output_y: usize, shared_z: usize) {
         //TODO: Get the inverse of the the second input, this would allow for reading it in a form that takes advantage of cache conference
         println!("Starting mul operation");
@@ -302,6 +317,15 @@ impl Equation {
         }
     }
 
+    #[inline(always)]
+    fn preform_scalar_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_token: MemoryToken) {
+        let scalar = self.memory[inputs[1].start];
+        for i in 0..inputs[0].size {
+            self.memory[output_token.start + i] = scalar * self.memory[inputs[0].start + i];
+        }
+    }
+
+    #[inline(always)]
     fn preform_map_operation(&mut self, input: MemoryToken, output: MemoryToken, mapping_function: VariableToken) {
         for i in 0..output.size {
             self.memory[output.start + i] = (*self.mapping_functions[&mapping_function])(self.memory[input.start + i]);
@@ -413,7 +437,20 @@ impl Equation {
                     let output_token = self.memory_token[&op.output_variable];
                     self.preform_map_operation(variable_tokens[0], output_token, op.output_variable);
 
+                },
+                Operator::Scalar => {
+                    self.preform_add_operation(variable_tokens, self.memory_token[&op.output_variable]);
                 }
+            }
+        }
+    }
+
+    pub fn copy_and_transpose_variable(&mut self, a: MemoryToken, b: MemoryToken) {
+        for y in 0..a.y_dim {
+            for x in 0..a.x_dim {
+                let a_index = x + (y * b.x_dim);
+                let b_index = y + (x * b.x_dim);
+                self.memory[b_index + b.start] = self.memory[a_index + a.start];
             }
         }
     }
@@ -429,7 +466,7 @@ impl Equation {
         let mut rng = rand::thread_rng();
         let token = self.memory_token[&variable_name];
         for i in 0..token.size {
-            self.memory[token.start + i] = rng.gen();
+            self.memory[token.start + i] = 0.;
         }
     }
 
