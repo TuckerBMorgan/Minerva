@@ -1,12 +1,13 @@
 #![allow(dead_code)]
-mod equation;
+mod operations;
+
 
 #[cfg(test)]
 pub mod tests {
     use std::collections::{HashMap};
 
-    pub use crate::equation::*;
-
+//    pub use crate::equation::*;
+    pub use crate::operations::*;
     #[test]
     fn main() {
 
@@ -79,6 +80,14 @@ pub mod tests {
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
         assert!(result == vec![2.0, 2.0, 3.0, 2.0]);
+    }
+
+    //The large addition test, is our other addtion code path work the same as our
+    //simple addition code path
+    //
+    #[test]
+    fn large_addition_test() {
+
     }
 
     #[test]
@@ -366,5 +375,5 @@ pub mod tests {
 }
 
 pub mod prelude {
-    pub use crate::equation::*;
+    pub use crate::operations::*;
 }

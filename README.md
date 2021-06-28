@@ -6,9 +6,9 @@ agnostic way
 
 
 Roadmap:
-    Conv operations
-    Added in BLAS for basic matrix speed up
     Jank speed up
+    Full working feed forward network
+    Added in BLAS for basic matrix speed up
     Rust-gpu
     Gpu code
     Integrate Rust GPU to allow you to write and deploy your own kernels on the GPU

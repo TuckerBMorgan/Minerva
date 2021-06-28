@@ -1,8 +1,8 @@
-struct AddJob {
-    lhs_start: usize,
-    rhs_start: usize,
-    destination_start: usize,
-    length: usize
+pub struct AddJob {
+    pub lhs_start: usize,
+    pub rhs_start: usize,
+    pub destination_start: usize,
+    pub length: usize
 }
 
 impl AddJob {
@@ -18,7 +18,7 @@ impl AddJob {
 
 
 
-
+/*
 fn imperative_add(matrix_size: usize) -> i64 {
     let mut vectors = vec![];
     for i in 0..3 {
@@ -138,3 +138,4 @@ fn bench_add(matrix_size: usize) {
     //let jank_result = bench_jank_add(matrix_size);
     //println!("Time taken for imperative Add {}, jank Add {} for matrix of size {}", imperative_result, jank_result, matrix_size);
 }
+*/

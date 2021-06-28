@@ -1,5 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
+use crate::operations::*;
+use std::thread;
+use std::sync::Arc;
+use std::sync::Mutex;
+
 
 #[derive(Debug, Copy, Clone, Hash, Eq)]
 pub struct VariableToken {
@@ -17,6 +22,13 @@ impl VariableToken {
         }
     }
 }
+
+#[derive(Copy, Clone)]
+struct JobPtr {
+    memory_ptr: * mut f32
+}
+unsafe impl Send for JobPtr {}
+unsafe impl Sync for JobPtr {}
 
 impl Ord for VariableToken {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -292,9 +304,54 @@ impl Equation {
 
     #[inline(always)]
     fn preform_add_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
-        println!("Starting add operation");
-        for i in 0..output_variable.size {
-            self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] + self.memory[i + inputs[1].start];
+
+        //TODO: Turn this value into a const, that has found by testing various sizes of matrices
+        if inputs[0].x_dim * inputs[0].y_dim > 100000 {
+            println!("Starting large add operation");   
+            let cpus = num_cpus::get() - 1;//Give our computer some room to breath
+            let number_of_operations = (output_variable.size * output_variable.size) / cpus;
+            let number_of_operations_1 = (output_variable.size * output_variable.size) % cpus;
+            let mut jobs = vec![];
+            for cpu in 0..cpus {
+                let chunk_start = cpu * number_of_operations;
+                let left_hand_start = inputs[0].start + chunk_start;
+                let right_hand_start = inputs[1].start + chunk_start;
+                let operations;
+                if cpu == cpus - 1 {
+                    operations = number_of_operations + number_of_operations_1;
+                }
+                else {
+                    operations = number_of_operations;
+                }
+                let job = AddJob::new(left_hand_start, right_hand_start, number_of_operations * cpu, operations);
+                jobs.push(job);
+            }
+
+            let vector_mut_ptr = JobPtr{memory_ptr: self.memory.as_mut_ptr()};
+            let mut handles = vec![];
+            for tj in jobs {
+                //let memory = arcss.clone();
+                let handle = thread::spawn(move||
+                    unsafe {
+                        let memory =  vector_mut_ptr.memory_ptr;
+                        for i in 0..tj.length {
+                            let memory_offset = tj.destination_start + i;
+                            let left_offset = tj.lhs_start + i;
+                            let right_offset = tj.rhs_start + i;
+                            //println!("{} {} {}", memory_offset, left_offset, right_offset);
+                            *memory.offset(memory_offset as isize) = *memory.offset(left_offset as isize) + *memory.offset(right_offset as isize);
+                        }
+                    }
+                );
+                handles.push(handle);
+            }
+        
+        }
+        else {
+            println!("Starting simple add operation");
+            for i in 0..output_variable.size {
+                self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] + self.memory[i + inputs[1].start];
+            }
         }
     }
 
