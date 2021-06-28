@@ -233,6 +233,7 @@ pub mod tests {
         equation.evaluate(&mut inputs);
 
         let result = equation.get_variable(c);
+        println!("{:?}", result);
         assert!(result == vec![0.0, 0.0, 0.0, 0.0]);
     }
 
@@ -251,7 +252,75 @@ pub mod tests {
         equation.evaluate(&mut inputs);
 
         let result = equation.get_variable(c);
+        println!("{:?}", result);
         assert!(result == vec![2.0, 2.0, 2.0, 2.0]);
+    }
+
+    #[test]
+    fn simple_conv_operation() {
+        let mut equation = Equation::new();
+        let a = equation.new_variable(2, 2);
+        let b = equation.new_variable(2, 2);
+        let c = equation.new_conv_operation(a, b, 0, false).unwrap();
+        let mut inputs = HashMap::new();
+        let mut target_matrix = vec![];
+        let mut kernel = vec![];
+        for i in 0..4 {
+            target_matrix.push(i as f32);
+            kernel.push(i as f32);
+        }
+        inputs.insert(a, target_matrix);
+        inputs.insert(b, kernel);
+        equation.evaluate(&mut inputs);
+        let result = equation.get_variable(c);
+        println!("{:?}", result);
+        assert!(result == vec![14.0]);
+    }
+
+    #[test]
+    fn multi_x_conv_operation() {
+        let mut equation = Equation::new();
+        let a = equation.new_variable(2, 3);
+        let b = equation.new_variable(2, 2);
+        let c = equation.new_conv_operation(a, b, 0, false).unwrap();
+        let mut inputs = HashMap::new();
+        let mut target_matrix = vec![];
+        let mut kernel = vec![];
+        for i in 0..6 {
+            target_matrix.push(i as f32);
+        }
+        for i in 0..4 {
+            kernel.push(i as f32);
+        }
+        inputs.insert(a, target_matrix);
+        inputs.insert(b, kernel);
+        equation.evaluate(&mut inputs);
+        let result = equation.get_variable(c);
+        println!("{:?}", result);
+        assert!(result == vec![19.0, 25.0]);
+    }
+
+    #[test]
+    fn multi_y_conv_operation() {
+        let mut equation = Equation::new();
+        let a = equation.new_variable(3, 2);
+        let b = equation.new_variable(2, 2);
+        let c = equation.new_conv_operation(a, b, 0, false).unwrap();
+        let mut inputs = HashMap::new();
+        let mut target_matrix = vec![];
+        let mut kernel = vec![];
+        for i in 0..6 {
+            target_matrix.push(i as f32);
+        }
+        for i in 0..4 {
+            kernel.push(i as f32);
+        }
+        inputs.insert(a, target_matrix);
+        inputs.insert(b, kernel);
+        equation.evaluate(&mut inputs);
+        let result = equation.get_variable(c);
+        println!("{:?}", result);
+        assert!(result == vec![14.0, 26.0]);
     }
 
     #[test]
@@ -280,9 +349,7 @@ pub mod tests {
 
 
         let learning_rate_adjust_delta_tranposed = feed_foward.transpose(learning_rate_adjust_delta);
-        println!("{:?}", learning_rate_adjust_delta_tranposed);
-        println!("{:?}", input);
-        println!("{:?}", learning_rate_adjust_delta);
+
         let final_output = feed_foward.new_operation_in_graph(vec![learning_rate_adjust_delta_tranposed, input], Operator::MatrixMul).unwrap();
         let update_weight = feed_foward.new_operation_in_graph(vec![final_output, first_dense_weight], Operator::Dif).unwrap();
 

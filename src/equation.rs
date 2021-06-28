@@ -43,7 +43,8 @@ pub enum Operator {
     ElementWiseMul,
     Map,
     Dif,
-    Scalar
+    Scalar,
+    Conv
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -224,13 +225,7 @@ impl Equation {
                 size.1 = rhs.x;
             },
             Operator::Map => {
-                if operands.len() != 1 {
-                    return Err("Incorrect number of operands for map operations, want 1");
-                }
-
-                let lhs = self.variables.get(&operands[0]).unwrap();
-                size.0 = lhs.x;
-                size.1 = lhs.y;
+                panic!("Dont use new_operation for a mapping opertion, use new_mapping_operation");
             },
             Operator::Scalar => {
                 if operands.len() != 2 {
@@ -244,6 +239,9 @@ impl Equation {
                 }
                 size.0 = lhs.x;
                 size.1 = lhs.y;
+            }
+            Operator::Conv => {
+                panic!("Dont use new_operation for a conv opertion, use new_conv_operations");
             }
         }
         let output_variable = self.new_variable(size.0, size.1);
@@ -272,6 +270,23 @@ impl Equation {
         let operation = Operation::new(Operator::Map, vec![operand], output_variable);
         self.operations.insert(output_variable, operation);
 
+        return Ok(output_variable);
+    }
+
+    #[inline(always)]
+    pub fn new_conv_operation(&mut self, target_matrix: VariableToken, kernel: VariableToken, stride: u32, padding: bool) -> Result<VariableToken, &'static str> {
+        let mut padding_amount = 0;
+        if padding {
+            padding_amount = 0;
+        }
+        //using this formula https://stackoverflow.com/questions/53580088/calculate-the-output-size-in-convolution-layer
+        let x_output_size = ((target_matrix.x_size - kernel.x_size) + (2 * padding_amount)) + 1;
+        let y_output_size = ((target_matrix.y_size - kernel.y_size) + (2 * padding_amount)) + 1;
+        let output_variable = self.new_variable(y_output_size, x_output_size);
+        let operation = Operation::new(Operator::Conv, vec![target_matrix, kernel], output_variable);
+        self.variables.get_mut(&target_matrix).unwrap().add_dependant_operation(output_variable);
+        self.variables.get_mut(&kernel).unwrap().add_dependant_operation(output_variable);
+        self.operations.insert(output_variable, operation);
         return Ok(output_variable);
     }
 
@@ -319,6 +334,7 @@ impl Equation {
 
     #[inline(always)]
     fn preform_scalar_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_token: MemoryToken) {
+        println!("Starting scalar mul operation");
         let scalar = self.memory[inputs[1].start];
         for i in 0..inputs[0].size {
             self.memory[output_token.start + i] = scalar * self.memory[inputs[0].start + i];
@@ -327,12 +343,34 @@ impl Equation {
 
     #[inline(always)]
     fn preform_map_operation(&mut self, input: MemoryToken, output: MemoryToken, mapping_function: VariableToken) {
+        println!("Starting map operation");
         for i in 0..output.size {
             self.memory[output.start + i] = (*self.mapping_functions[&mapping_function])(self.memory[input.start + i]);
         }
     }
 
-    pub fn topilogical_sort(&mut self) -> Vec<Operation> {
+    #[inline(always)]
+    fn preform_conv_operation(&mut self, inputs: Vec<MemoryToken>, output: MemoryToken) {
+        println!("Starting conv operation");
+        let target_transform = inputs[0];
+        let kernel = inputs[1];
+        let x_kernel_difference = target_transform.x_dim - kernel.x_dim;
+
+        for i in 0..output.size {
+            let mut summed = 0.0f32;
+            for k in 0..kernel.size {
+
+                let x_shift = i % output.x_dim;
+                let y_shift = i % output.y_dim;
+                let memory_index = k + x_shift + (y_shift * target_transform.x_dim) + ((k / kernel.x_dim) * x_kernel_difference);
+                summed += self.memory[kernel.start + k] * self.memory[target_transform.start + memory_index];
+            }
+            self.memory[output.start + i] = summed;
+        }
+    }
+
+    #[inline(always)]
+    fn topilogical_sort(&mut self) -> Vec<Operation> {
         println!("Starting Top sort");
         let mut l = vec![];
         let mut s = vec![];
@@ -384,6 +422,7 @@ impl Equation {
     }
 
     pub fn fill_in_inputs(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
+        println!("Filling in inputs");
         for (k, v) in inputs.iter() {
             let memory_token = self.memory_token[k];
             for i in 0..memory_token.size {
@@ -392,10 +431,13 @@ impl Equation {
         }
     }
 
-    pub fn evaluate(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
+    /*
+    I would like for this to be called between finishing up your graph and calling exectue
+    pub fn compile()
+    */
 
+    pub fn evaluate(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
         println!("Starting evaluation of function");
-        println!("Filling in inputs");
         self.fill_in_inputs(inputs);
         let mut keys : Vec<VariableToken> = inputs.keys().map(|x|*x).collect();
         keys.sort();
@@ -440,6 +482,9 @@ impl Equation {
                 },
                 Operator::Scalar => {
                     self.preform_add_operation(variable_tokens, self.memory_token[&op.output_variable]);
+                },
+                Operator::Conv => {
+                    self.preform_conv_operation(variable_tokens, self.memory_token[&op.output_variable]);
                 }
             }
         }
