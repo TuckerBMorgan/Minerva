@@ -5,9 +5,10 @@ mod operations;
 #[cfg(test)]
 pub mod tests {
     use std::collections::{HashMap};
-
-//    pub use crate::equation::*;
     pub use crate::operations::*;
+    /*
+//    pub use crate::equation::*;
+
     #[test]
     fn main() {
 
@@ -61,7 +62,7 @@ pub mod tests {
         let c = equation.new_operation_in_graph(vec![a, b], Operator::Add);
         assert!(c.is_ok());
     }
-
+    */
     #[test]
     fn simple_addition_test() {
         let mut equation = Equation::new();
@@ -81,13 +82,36 @@ pub mod tests {
         let result = equation.get_variable(c);
         assert!(result == vec![2.0, 2.0, 3.0, 2.0]);
     }
-
+    /*
     //The large addition test, is our other addtion code path work the same as our
     //simple addition code path
     //
     #[test]
     fn large_addition_test() {
+        let x_size = 10000;
+        let y_size = 10000;
+        let total_size = x_size * y_size;
+        let mut equation = Equation::new();
+        let a = equation.new_variable(y_size, x_size);
+        let b = equation.new_variable(y_size, x_size);
+        let c = equation.new_operation_in_graph(vec![a, b], Operator::Add).unwrap();
+        let mut a_value = vec![];
+        let mut b_value = vec![];
 
+        for i in 0..total_size {
+            a_value.push(i as f32);
+            b_value.push(i as f32);
+        }
+
+        let mut inputs = HashMap::new();
+        inputs.insert(a, a_value);
+        inputs.insert(b, b_value);
+
+        equation.evaluate(&mut inputs);
+        let result = equation.get_variable(c);
+        for i in 0..total_size {
+            assert!(result[i] == i as f32 * 2.0);
+        }
     }
 
     #[test]
@@ -114,8 +138,6 @@ pub mod tests {
     #[test]
     fn unsquare_mul_test() {
         let mut equation = Equation::new();
-//        2 x 3 MUL 3 x 2
-//        2 x 2
         let a = equation.new_variable(3, 2);
         let b = equation.new_variable(2, 3);
         let c = equation.new_operation_in_graph(vec![a, b], Operator::MatrixMul).unwrap();
@@ -372,6 +394,7 @@ pub mod tests {
         inputs.insert(input, first_input);
         feed_foward.evaluate(&mut inputs);
     }
+    */
 }
 
 pub mod prelude {

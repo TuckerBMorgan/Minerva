@@ -4,7 +4,23 @@ use crate::operations::*;
 use std::thread;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::any::Any;
 
+pub enum JobType {
+    Add,
+    MatrixMul,
+    ElementWiseMul,
+    Map,
+    Dif,
+    Scalar,
+    Conv,
+    Fence
+}
+
+pub trait Job : Any {
+    fn job_type(&self) -> JobType;
+    fn as_any(&self) -> &dyn Any;
+}
 
 #[derive(Debug, Copy, Clone, Hash, Eq)]
 pub struct VariableToken {
@@ -61,10 +77,10 @@ pub enum Operator {
 
 #[derive(Debug, Copy, Clone)]
 pub struct MemoryToken {
-    x_dim: usize,
-    y_dim: usize,
-    start: usize,
-    size: usize
+    pub x_dim: usize,
+    pub y_dim: usize,
+    pub start: usize,
+    pub size: usize
 }
 
 impl MemoryToken {
@@ -137,8 +153,10 @@ pub struct Equation {
     operations: HashMap<VariableToken, Operation>,
     memory_token: HashMap<VariableToken, MemoryToken>,
     mapping_functions: HashMap<VariableToken, Box<dyn Fn(f32) -> f32>>,
+    has_been_compiled: bool,
     variable_count: usize,
     memory: Vec<f32>,
+    jobs: Vec<Box<dyn Job>>
 }
 
 impl Equation {
@@ -149,9 +167,12 @@ impl Equation {
             memory_token: HashMap::new(),
             mapping_functions: HashMap::new(),
             variable_count: 0,
+            has_been_compiled: false,
             memory: vec![],
+            jobs: vec![]
         }
     }
+
 
     //Minerva is Col major lib
     pub fn new_variable(&mut self, y_size: usize, x_size: usize) -> VariableToken {
@@ -302,15 +323,26 @@ impl Equation {
         return Ok(output_variable);
     }
 
+    fn preform_add_job(add_job: &AddJob, memory_pointer: Arc<JobPtr>) {
+        unsafe {
+            let memory =  memory_pointer.memory_ptr;
+            for i in 0..add_job.length {
+                let memory_offset = add_job.destination_start + i;
+                let left_offset = add_job.lhs_start + i;
+                let right_offset = add_job.rhs_start + i;
+                let left_hand_value = *memory.offset(left_offset as isize);
+                let right_hand_value = *memory.offset(right_offset as isize);
+                *memory.offset(memory_offset as isize) = left_hand_value + right_hand_value;
+            }
+        }
+    }
+    /*
     #[inline(always)]
     fn preform_add_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
-
-        //TODO: Turn this value into a const, that has found by testing various sizes of matrices
-        if inputs[0].x_dim * inputs[0].y_dim > 100000 {
-            println!("Starting large add operation");   
+        if self.jank == true {
             let cpus = num_cpus::get() - 1;//Give our computer some room to breath
-            let number_of_operations = (output_variable.size * output_variable.size) / cpus;
-            let number_of_operations_1 = (output_variable.size * output_variable.size) % cpus;
+            let number_of_operations = output_variable.size / cpus;
+            let number_of_operations_1 = output_variable.size % cpus;
             let mut jobs = vec![];
             for cpu in 0..cpus {
                 let chunk_start = cpu * number_of_operations;
@@ -323,32 +355,36 @@ impl Equation {
                 else {
                     operations = number_of_operations;
                 }
-                let job = AddJob::new(left_hand_start, right_hand_start, number_of_operations * cpu, operations);
+                let job = AddJob::new(left_hand_start, right_hand_start, output_variable.start + number_of_operations * cpu, operations);
                 jobs.push(job);
             }
 
             let vector_mut_ptr = JobPtr{memory_ptr: self.memory.as_mut_ptr()};
             let mut handles = vec![];
             for tj in jobs {
-                //let memory = arcss.clone();
                 let handle = thread::spawn(move||
                     unsafe {
+                        
                         let memory =  vector_mut_ptr.memory_ptr;
                         for i in 0..tj.length {
                             let memory_offset = tj.destination_start + i;
                             let left_offset = tj.lhs_start + i;
                             let right_offset = tj.rhs_start + i;
-                            //println!("{} {} {}", memory_offset, left_offset, right_offset);
-                            *memory.offset(memory_offset as isize) = *memory.offset(left_offset as isize) + *memory.offset(right_offset as isize);
+                            let left_hand_value = *memory.offset(left_offset as isize);
+                            let right_hand_value = *memory.offset(right_offset as isize);
+                            *memory.offset(memory_offset as isize) = left_hand_value + right_hand_value;
                         }
                     }
                 );
                 handles.push(handle);
             }
+
+            for h in handles {
+                let _ = h.join();
+            }
         
         }
         else {
-            println!("Starting simple add operation");
             for i in 0..output_variable.size {
                 self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] + self.memory[i + inputs[1].start];
             }
@@ -357,7 +393,6 @@ impl Equation {
 
     #[inline(always)]
     fn preform_dif_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
-        println!("Starting add operation");
         for i in 0..output_variable.size {
             self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] - self.memory[i + inputs[1].start];
         }
@@ -365,7 +400,6 @@ impl Equation {
 
     #[inline(always)]
     fn preform_element_wise_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
-        println!("Starting add operation");
         for i in 0..output_variable.size {
             self.memory[i + output_variable.start] = self.memory[i + inputs[0].start] * self.memory[i + inputs[1].start];
         }
@@ -374,7 +408,6 @@ impl Equation {
     #[inline(always)]
     fn preform_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_token: MemoryToken, output_x: usize, output_y: usize, shared_z: usize) {
         //TODO: Get the inverse of the the second input, this would allow for reading it in a form that takes advantage of cache conference
-        println!("Starting mul operation");
         for y in 0..output_y {
             for x in 0..output_x {
                 let mut running_total = 0.0f32;
@@ -391,7 +424,6 @@ impl Equation {
 
     #[inline(always)]
     fn preform_scalar_mul_operation(&mut self, inputs: Vec<MemoryToken>, output_token: MemoryToken) {
-        println!("Starting scalar mul operation");
         let scalar = self.memory[inputs[1].start];
         for i in 0..inputs[0].size {
             self.memory[output_token.start + i] = scalar * self.memory[inputs[0].start + i];
@@ -400,7 +432,6 @@ impl Equation {
 
     #[inline(always)]
     fn preform_map_operation(&mut self, input: MemoryToken, output: MemoryToken, mapping_function: VariableToken) {
-        println!("Starting map operation");
         for i in 0..output.size {
             self.memory[output.start + i] = (*self.mapping_functions[&mapping_function])(self.memory[input.start + i]);
         }
@@ -408,7 +439,6 @@ impl Equation {
 
     #[inline(always)]
     fn preform_conv_operation(&mut self, inputs: Vec<MemoryToken>, output: MemoryToken) {
-        println!("Starting conv operation");
         let target_transform = inputs[0];
         let kernel = inputs[1];
         let x_kernel_difference = target_transform.x_dim - kernel.x_dim;
@@ -425,10 +455,9 @@ impl Equation {
             self.memory[output.start + i] = summed;
         }
     }
-
+    */
     #[inline(always)]
     fn topilogical_sort(&mut self) -> Vec<Operation> {
-        println!("Starting Top sort");
         let mut l = vec![];
         let mut s = vec![];
 
@@ -479,7 +508,6 @@ impl Equation {
     }
 
     pub fn fill_in_inputs(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
-        println!("Filling in inputs");
         for (k, v) in inputs.iter() {
             let memory_token = self.memory_token[k];
             for i in 0..memory_token.size {
@@ -488,13 +516,34 @@ impl Equation {
         }
     }
 
-    /*
-    I would like for this to be called between finishing up your graph and calling exectue
-    pub fn compile()
-    */
+    pub fn compile(&mut self)  {
+        let mut sorted_opertions : Vec<Operation>= self.topilogical_sort();
+        sorted_opertions.reverse();
+
+        while sorted_opertions.len() > 0 {
+            let op = sorted_opertions.pop().unwrap();
+            let mut variable_tokens = vec![];
+            for variable in &op.inputs_in_order {
+                variable_tokens.push(self.memory_token[&variable]);
+            }
+
+            match op.operator {
+                Operator::Add => {
+                    self.jobs.append(&mut compile_add_operation(variable_tokens, self.memory_token[&op.output_variable]));
+                },
+                _ => {
+
+                }
+            }
+        }
+        self.has_been_compiled = true;
+    }
+
+    pub fn get_job(&mut self) -> Arc<Box<dyn Job>> {
+        return Arc::new(self.jobs[0]).clone();
+    }
 
     pub fn evaluate(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
-        println!("Starting evaluation of function");
         self.fill_in_inputs(inputs);
         let mut keys : Vec<VariableToken> = inputs.keys().map(|x|*x).collect();
         keys.sort();
@@ -507,6 +556,20 @@ impl Equation {
             }
         }
 
+        let vector_mut_ptr = Arc::new(JobPtr{memory_ptr: self.memory.as_mut_ptr()});
+
+        for job in &self.jobs {
+            match job.job_type() {
+                JobType::Add => {
+                    let job = job.as_any().downcast_ref().unwrap();
+                    Equation::preform_add_job(&job, vector_mut_ptr.clone());
+                },
+                _ => {
+
+                }
+            }
+        }
+/*
         let mut sorted_opertions : Vec<Operation>= self.topilogical_sort();
         sorted_opertions.reverse();
 
@@ -545,6 +608,7 @@ impl Equation {
                 }
             }
         }
+        */
     }
 
     pub fn copy_and_transpose_variable(&mut self, a: MemoryToken, b: MemoryToken) {
@@ -565,6 +629,8 @@ impl Equation {
     }
 
     pub fn random_init_variable(&mut self, variable_name: VariableToken) {
+        //TODO: Allow the user to provide a function for how they want to init their
+        //variable like, LeCun init
         let mut rng = rand::thread_rng();
         let token = self.memory_token[&variable_name];
         for i in 0..token.size {

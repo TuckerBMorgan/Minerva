@@ -1,3 +1,8 @@
+use crate::operations::*;
+use std::any::Any;
+
+
+#[derive(Default)]
 pub struct AddJob {
     pub lhs_start: usize,
     pub rhs_start: usize,
@@ -16,8 +21,53 @@ impl AddJob {
     }
 }
 
+impl Job for AddJob {
+    fn job_type(&self) -> JobType {
+        return JobType::Add;
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
+pub fn compile_add_operation(inputs: Vec<MemoryToken>, output_variable: MemoryToken) -> Vec<Box<dyn Job>> {
+    let cpus = num_cpus::get() - 1;//Give our computer some room to breath
+    let number_of_operations = output_variable.size / cpus;
+    let number_of_operations_1 = output_variable.size % cpus;
+    let mut jobs = vec![];
+    for cpu in 0..cpus {
+        let chunk_start = cpu * number_of_operations;
+        let left_hand_start = inputs[0].start + chunk_start;
+        let right_hand_start = inputs[1].start + chunk_start;
+        let operations;
+        if cpu == cpus - 1 {
+            operations = number_of_operations + number_of_operations_1;
+        }
+        else {
+            operations = number_of_operations;
+        }
+        let job = Box::new(AddJob::new(left_hand_start, right_hand_start, output_variable.start + number_of_operations * cpu, operations));
+        let job = job as Box<dyn Job>;
+        jobs.push(job);
+    }
 
+    return jobs;
+}
+/*
+fn preform_add_job(add_job: &AddJob, memory_pointer: Arc<JobPtr>) {
+    unsafe {
+        let memory =  memory_pointer.memory_ptr;
+        for i in 0..add_job.length {
+            let memory_offset = add_job.destination_start + i;
+            let left_offset = add_job.lhs_start + i;
+            let right_offset = add_job.rhs_start + i;
+            let left_hand_value = *memory.offset(left_offset as isize);
+            let right_hand_value = *memory.offset(right_offset as isize);
+            *memory.offset(memory_offset as isize) = left_hand_value + right_hand_value;
+        }
+    }
+}
+*/
 /*
 fn imperative_add(matrix_size: usize) -> i64 {
     let mut vectors = vec![];
@@ -61,7 +111,7 @@ fn jank_add(matrix_size: usize) -> i64 {
             }
         }
     }
-    let sw = Stopwatch::start_new();
+
     let arcss = Arc::new(memory_buf);
     let mut jobs = vec![];
     let cpus = num_cpus::get() - 1;//Give our computer some room to breath
@@ -115,7 +165,7 @@ fn jank_add(matrix_size: usize) -> i64 {
         }
     }
 
-    return sw.elapsed_ms();
+    return 
 }
 
 fn bench_jank_add(matrix_size: usize) -> f32 {
