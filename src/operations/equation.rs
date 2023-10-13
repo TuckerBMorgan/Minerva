@@ -2,24 +2,45 @@ use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
 use crate::operations::*;
 use std::thread;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::any::Any;
-
+use std::sync::mpsc::channel;
+use stopwatch::{Stopwatch};
+use log::info;
+// JobType: Enum used for both laying out the total work
+// done by a graph
+// and a internprocess commnication medium
+#[derive(Copy, Clone)]
 pub enum JobType {
-    Add,
-    MatrixMul,
-    ElementWiseMul,
-    Map,
-    Dif,
+    Add(usize, usize, usize, usize),
+    MatrixMul(usize, usize, usize, usize, usize, usize, usize, usize),
+    ElementWiseMul(usize, usize, usize, usize),
+    Map(usize, usize, usize, fn(f32)->f32),
+    Diff(usize, usize, usize, usize),
     Scalar,
     Conv,
-    Fence
+    Fence,
+    End
 }
 
-pub trait Job : Any {
-    fn job_type(&self) -> JobType;
-    fn as_any(&self) -> &dyn Any;
+impl JobType {
+    pub fn new_add_type(lhs_start: usize, rhs_start: usize, destination_start: usize, length: usize) -> JobType {
+        return JobType::Add(lhs_start, rhs_start, destination_start, length);
+    }
+
+    pub fn new_element_wise_mul_type(lhs_start: usize, rhs_start: usize, destination_start: usize, length: usize) -> JobType {
+        return JobType::ElementWiseMul(lhs_start, rhs_start, destination_start, length);
+    }
+
+    pub fn new_diff_type(lhs_start: usize, rhs_start: usize, destination_start: usize, length: usize) -> JobType {
+        return JobType::Diff(lhs_start, rhs_start, destination_start, length);
+    }
+
+    pub fn new_matrix_mul_type(lhs_start: usize, rhs_start: usize, destination_start: usize, output_x: usize, output_y: usize, output_y_start: usize, output_y_end: usize,shared_z: usize) -> JobType {
+        return JobType::MatrixMul(lhs_start, rhs_start, destination_start, output_x, output_y, output_y_start, output_y_end, shared_z);
+    }
+
+    pub fn new_map_type(lhs_start: usize, destination_start: usize, length: usize, mapping_function: fn(f32) -> f32) -> JobType {
+        return JobType::Map(lhs_start, destination_start, length, mapping_function);
+    }
 }
 
 #[derive(Debug, Copy, Clone, Hash, Eq)]
@@ -40,8 +61,8 @@ impl VariableToken {
 }
 
 #[derive(Copy, Clone)]
-struct JobPtr {
-    memory_ptr: * mut f32
+pub struct JobPtr {
+    pub memory_ptr: * mut f32
 }
 unsafe impl Send for JobPtr {}
 unsafe impl Sync for JobPtr {}
@@ -70,7 +91,7 @@ pub enum Operator {
     MatrixMul,
     ElementWiseMul,
     Map,
-    Dif,
+    Diff,
     Scalar,
     Conv
 }
@@ -152,11 +173,12 @@ pub struct Equation {
     variables: HashMap<VariableToken, Variable>,
     operations: HashMap<VariableToken, Operation>,
     memory_token: HashMap<VariableToken, MemoryToken>,
-    mapping_functions: HashMap<VariableToken, Box<dyn Fn(f32) -> f32>>,
+    mapping_functions: HashMap<VariableToken, fn(f32)->f32>,
     has_been_compiled: bool,
     variable_count: usize,
     memory: Vec<f32>,
-    jobs: Vec<Box<dyn Job>>
+    jobs: Vec<JobType>,
+    is_compiled: bool
 }
 
 impl Equation {
@@ -169,7 +191,8 @@ impl Equation {
             variable_count: 0,
             has_been_compiled: false,
             memory: vec![],
-            jobs: vec![]
+            jobs: vec![],
+            is_compiled: false
         }
     }
 
@@ -232,7 +255,7 @@ impl Equation {
                 size.1 = lhs.y;
 
             },
-            Operator::Dif => {
+            Operator::Diff => {
                 if operands.len() != 2 {
                     return Err("Incorrect number of operands for a diff operations, want 2");
                 }
@@ -272,7 +295,7 @@ impl Equation {
                 }
                 size.0 = lhs.x;
                 size.1 = lhs.y;
-            }
+            },
             Operator::Conv => {
                 panic!("Dont use new_operation for a conv opertion, use new_conv_operations");
             }
@@ -287,10 +310,8 @@ impl Equation {
     }
 
     #[inline(always)]
-    pub fn new_mapping_operation(&mut self, operand: VariableToken, function: Box<dyn Fn(f32) -> f32>) -> Result<VariableToken, &'static str> {
+    pub fn new_mapping_operation(&mut self, operand: VariableToken, function: fn(f32)->f32) -> Result<VariableToken, &'static str> {
         //Copy the mapping function in
-
-
         let original_value = &self.variables[&operand].clone();
         //Create the memory for the output of the mapping
         let output_variable = self.new_variable(original_value.x, original_value.y);
@@ -307,7 +328,7 @@ impl Equation {
     }
 
     #[inline(always)]
-    pub fn new_conv_operation(&mut self, target_matrix: VariableToken, kernel: VariableToken, stride: u32, padding: bool) -> Result<VariableToken, &'static str> {
+    pub fn new_conv_operation(&mut self, target_matrix: VariableToken, kernel: VariableToken, stride: usize, padding: bool) -> Result<VariableToken, &'static str> {
         let mut padding_amount = 0;
         if padding {
             padding_amount = 0;
@@ -323,19 +344,7 @@ impl Equation {
         return Ok(output_variable);
     }
 
-    fn preform_add_job(add_job: &AddJob, memory_pointer: Arc<JobPtr>) {
-        unsafe {
-            let memory =  memory_pointer.memory_ptr;
-            for i in 0..add_job.length {
-                let memory_offset = add_job.destination_start + i;
-                let left_offset = add_job.lhs_start + i;
-                let right_offset = add_job.rhs_start + i;
-                let left_hand_value = *memory.offset(left_offset as isize);
-                let right_hand_value = *memory.offset(right_offset as isize);
-                *memory.offset(memory_offset as isize) = left_hand_value + right_hand_value;
-            }
-        }
-    }
+
     /*
     #[inline(always)]
     fn preform_add_operation(&mut self, inputs: Vec<MemoryToken>, output_variable: MemoryToken) {
@@ -456,6 +465,8 @@ impl Equation {
         }
     }
     */
+
+    //https://en.wikipedia.org/wiki/Topological_sorting
     #[inline(always)]
     fn topilogical_sort(&mut self) -> Vec<Operation> {
         let mut l = vec![];
@@ -508,16 +519,36 @@ impl Equation {
     }
 
     pub fn fill_in_inputs(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
+        let sw = Stopwatch::start_new();
+
         for (k, v) in inputs.iter() {
             let memory_token = self.memory_token[k];
             for i in 0..memory_token.size {
                 self.memory[memory_token.start + i] = v[i];
             }
         }
-    }
+
+        info!("fill in input took {:?}", sw.elapsed_ms());
+    } 
 
     pub fn compile(&mut self)  {
-        let mut sorted_opertions : Vec<Operation>= self.topilogical_sort();
+        let sw = Stopwatch::start_new();
+        let mut keys = vec![];
+        for (k, v) in &self.variables {
+            if self.operations.contains_key(k) == false {
+                keys.push(*k);
+            }
+        }
+
+        for k in keys {
+            let variable = &self.variables[&k];
+            for dp in &variable.dependant_opertions {
+                self.operations.get_mut(dp).unwrap().inputs.remove(&k);
+                self.operations.get_mut(dp).unwrap().satisfied_input.push(k);
+            }
+        }
+
+        let mut sorted_opertions : Vec<Operation> = self.topilogical_sort();
         sorted_opertions.reverse();
 
         while sorted_opertions.len() > 0 {
@@ -531,84 +562,125 @@ impl Equation {
                 Operator::Add => {
                     self.jobs.append(&mut compile_add_operation(variable_tokens, self.memory_token[&op.output_variable]));
                 },
+                Operator::Diff => {
+                    self.jobs.append(&mut compile_diff_operation(variable_tokens, self.memory_token[&op.output_variable]));
+                }
+                Operator::MatrixMul => {
+                    self.jobs.append(&mut compile_matrix_mul_operation(variable_tokens, self.memory_token[&op.output_variable]));
+                }
+                Operator::Map => {
+                    self.jobs.append(&mut compile_map_operation(variable_tokens, self.memory_token[&op.output_variable], self.mapping_functions[&op.output_variable]));
+                },
+                Operator::ElementWiseMul => {
+                    self.jobs.append(&mut compile_element_wise_mul_job(variable_tokens, self.memory_token[&op.output_variable]));
+                }
                 _ => {
 
                 }
             }
         }
-        self.has_been_compiled = true;
-    }
+        /*
+        use crate::operations::*;
 
-    pub fn get_job(&mut self) -> Arc<Box<dyn Job>> {
-        return Arc::new(self.jobs[0]).clone();
+        pub fn compile_add_operation(inputs: Vec<MemoryToken>, output_variable: MemoryToken) -> Vec<JobType> {
+            let cpus = (num_cpus::get() - 1) as usize;//Give our computer some room to breath
+            let number_of_operations = output_variable.size / cpus;
+            let number_of_operations_1 = output_variable.size % cpus;
+            if output_variable.size * 10 > cpus {
+                return vec![
+                    JobType::new_add_type(inputs[0].start, inputs[1].start,  output_variable.start, output_variable.size)
+                ];
+            }
+            let mut jobs = vec![];
+            for cpu in 0..cpus {
+                let chunk_start = cpu * number_of_operations;
+                let left_hand_start = inputs[0].start + chunk_start;
+                let right_hand_start = inputs[1].start + chunk_start;
+                let operations;
+                if cpu == cpus - 1 {
+                    operations = number_of_operations + number_of_operations_1;
+                }
+                else {
+                    operations = number_of_operations;
+                }
+                let job = JobType::new_add_type(left_hand_start, right_hand_start,  output_variable.start + chunk_start, operations);
+                jobs.push(job);
+            }
+
+            return jobs;
+        }
+
+        pub fn preform_add_job(lhs_start: usize,  rhs_start: usize, destination_start: usize, length: usize, memory_pointer: &mut JobPtr) {
+            unsafe {
+                let memory =  memory_pointer.memory_ptr;
+                for i in 0..length {
+                    let memory_offset = destination_start + i;
+                    let left_offset = lhs_start + i;
+                    let right_offset = rhs_start + i;
+                    let left_hand_value = *memory.offset(left_offset as isize);
+                    let right_hand_value = *memory.offset(right_offset as isize);
+                    *memory.offset(memory_offset as isize) = left_hand_value + right_hand_value;
+                }
+            }
+        }
+ */
+        self.has_been_compiled = true;
+        println!("Finished Compiling Graph");
+        info!("Compiling took {:?}", sw.elapsed_ms());
     }
 
     pub fn evaluate(&mut self, inputs: &mut HashMap<VariableToken, Vec<f32>>) {
+        assert!(self.has_been_compiled);
         self.fill_in_inputs(inputs);
-        let mut keys : Vec<VariableToken> = inputs.keys().map(|x|*x).collect();
-        keys.sort();
+        let sw = Stopwatch::start_new();
+        let vector_mut_ptr = JobPtr{memory_ptr: self.memory.as_mut_ptr()};
+        let number_of_worker_thread = num_cpus::get() - 1;//Maybe make this a config?
+        let mut senders = vec![];
+        let mut receivers = vec![];
+        let mut handles = vec![];
 
-        for k in keys {
-            let variable = &self.variables[&k];
-            for dp in &variable.dependant_opertions {
-                self.operations.get_mut(dp).unwrap().inputs.remove(&k);
-                self.operations.get_mut(dp).unwrap().satisfied_input.push(k);
-            }
+        for i in 0..number_of_worker_thread {
+            let (tx_to_worker, rx_from_equation) = channel();
+            let (tx_to_equation, rx_from_worker) = channel();
+            senders.push(tx_to_worker);
+            receivers.push(rx_from_worker);
+            let handle = thread::spawn(move||
+                worker_thread(i, vector_mut_ptr, tx_to_equation, rx_from_equation)
+            );
+            handles.push(handle);
         }
 
-        let vector_mut_ptr = Arc::new(JobPtr{memory_ptr: self.memory.as_mut_ptr()});
+        let mut current_job_index = 0;
+        while current_job_index < self.jobs.len() {
+            for i in 0..number_of_worker_thread {
+                let wants_work = receivers[i].try_recv();
+                match wants_work {
+                    Ok(job_poke) => {
+                        match job_poke {
+                            JobPoke::Done(thread_number) => {
+                                let _ = senders[thread_number].send(self.jobs[current_job_index]);
+                                current_job_index += 1;
+                                if current_job_index == self.jobs.len() {
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    Err(_) => {
 
-        for job in &self.jobs {
-            match job.job_type() {
-                JobType::Add => {
-                    let job = job.as_any().downcast_ref().unwrap();
-                    Equation::preform_add_job(&job, vector_mut_ptr.clone());
-                },
-                _ => {
-
+                    }
                 }
             }
         }
-/*
-        let mut sorted_opertions : Vec<Operation>= self.topilogical_sort();
-        sorted_opertions.reverse();
 
-        while sorted_opertions.len() > 0 {
-            let op = sorted_opertions.pop().unwrap();
-            let mut variable_tokens = vec![];
-            for variable in &op.inputs_in_order {
-                variable_tokens.push(self.memory_token[&variable]);
-            }
-
-            match op.operator {
-                Operator::Add => {
-                    self.preform_add_operation(variable_tokens, self.memory_token[&op.output_variable]);
-                },
-                Operator::Dif => {
-                    self.preform_dif_operation(variable_tokens, self.memory_token[&op.output_variable]);
-                },
-                Operator::ElementWiseMul => {
-                    self.preform_element_wise_mul_operation(variable_tokens, self.memory_token[&op.output_variable]);
-                },
-                Operator::MatrixMul => {
-                    let output_token = self.memory_token[&op.output_variable];
-                    let y_dim = variable_tokens[0].x_dim;
-                    self.preform_mul_operation(variable_tokens, output_token, output_token.x_dim, output_token.y_dim, y_dim);
-                },
-                Operator::Map => {
-                    let output_token = self.memory_token[&op.output_variable];
-                    self.preform_map_operation(variable_tokens[0], output_token, op.output_variable);
-
-                },
-                Operator::Scalar => {
-                    self.preform_add_operation(variable_tokens, self.memory_token[&op.output_variable]);
-                },
-                Operator::Conv => {
-                    self.preform_conv_operation(variable_tokens, self.memory_token[&op.output_variable]);
-                }
-            }
+        for i in 0..number_of_worker_thread {
+            let _ = senders[i].send(JobType::End);
         }
-        */
+
+        for h in handles {
+            let _ = h.join();
+        }
+        info!("Evaluation took {:?}", sw.elapsed_ms());
     }
 
     pub fn copy_and_transpose_variable(&mut self, a: MemoryToken, b: MemoryToken) {

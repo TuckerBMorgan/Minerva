@@ -6,9 +6,11 @@ mod operations;
 pub mod tests {
     use std::collections::{HashMap};
     pub use crate::operations::*;
+    use log::LevelFilter;
+    use log::info;
     /*
 //    pub use crate::equation::*;
-
+*/
     #[test]
     fn main() {
 
@@ -36,9 +38,8 @@ pub mod tests {
         inputs.insert(f, vec![10.0, 10.0, 10.0, 10.0]);
 
         inputs.insert(i, vec![2.0, 2.0, 2.0, 2.0]);
-
+        equation.compile();
         equation.evaluate(&mut inputs);
-        print!("{:?}", equation.get_variable(y));
     }
 
     #[test]
@@ -62,7 +63,7 @@ pub mod tests {
         let c = equation.new_operation_in_graph(vec![a, b], Operator::Add);
         assert!(c.is_ok());
     }
-    */
+    
     #[test]
     fn simple_addition_test() {
         let mut equation = Equation::new();
@@ -77,17 +78,18 @@ pub mod tests {
         inputs.insert(b, vec![1.0, 1.0,
                                    2.0, 1.0]);
 
-
+        equation.compile();
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
         assert!(result == vec![2.0, 2.0, 3.0, 2.0]);
     }
-    /*
+    
     //The large addition test, is our other addtion code path work the same as our
     //simple addition code path
     //
     #[test]
     fn large_addition_test() {
+        let _ = simple_logging::log_to_file("server.log", LevelFilter::Info);
         let x_size = 10000;
         let y_size = 10000;
         let total_size = x_size * y_size;
@@ -106,7 +108,7 @@ pub mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(a, a_value);
         inputs.insert(b, b_value);
-
+        equation.compile();
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
         for i in 0..total_size {
@@ -116,6 +118,7 @@ pub mod tests {
 
     #[test]
     fn simple_mul_test() {
+        let _ = simple_logging::log_to_file("server.log", LevelFilter::Info);
         let mut equation = Equation::new();
 
         let a = equation.new_variable(2, 2);
@@ -129,7 +132,7 @@ pub mod tests {
         inputs.insert(b, vec![5.0, 6.0,
                                    7.0, 8.0]);
 
-
+        equation.compile();
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
         assert!(result == vec![19.0, 22.0, 43.0, 50.0]);
@@ -149,7 +152,7 @@ pub mod tests {
                                    9.0, 10.0,
                                    11.0, 12.0]);
 
-
+        equation.compile();
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
         assert!(result == vec![27.0, 30.0, 33.0, 61.0, 68.0, 75.0, 95.0, 106.0, 117.0]);
@@ -157,6 +160,7 @@ pub mod tests {
 
     #[test]
     fn use_operation_result_test() {
+        let _ = simple_logging::log_to_file("server.log", LevelFilter::Info);
         let mut equation = Equation::new();
 
         let a = equation.new_variable(2, 2);
@@ -173,14 +177,14 @@ pub mod tests {
                               2.0, 1.0]);
         inputs.insert(d, vec![5.0, 6.0,
                               7.0, 8.0]);
-
+        equation.compile();
         equation.evaluate(&mut inputs);
 
         let result = equation.get_variable(c);
         assert!(result == vec![2.0, 2.0,
                                3.0, 2.0]);
         let result = equation.get_variable(e);
-        println!("{:?}", result);
+        info!("{:?}", result);
         assert!(result == vec![24.0, 28.0,
                                29.0, 34.0]);
     }
@@ -194,12 +198,15 @@ pub mod tests {
 
     #[test]
     fn simple_mapping_test() {
+        let _ = simple_logging::log_to_file("server.log", LevelFilter::Info);
         let mut equation = Equation::new();
         let a = equation.new_variable(2, 2);
-        let b = equation.new_mapping_operation(a, Box::new(sigmoid)).unwrap();
+        let b = equation.new_mapping_operation(a, sigmoid).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 0.0, 5.0, 0.75]);
+
+        equation.compile();
         equation.evaluate(&mut inputs);
 
         let result = equation.get_variable(b);
@@ -215,11 +222,13 @@ pub mod tests {
     }
 
     fn sigmoid_prime(x: f32) -> f32 {
-        sigmoid(x) * (1.0f32 - sigmoid(x))
+        sigmoid(x) * (1.0f32 - sigmoid(x)) 
     }
 
     #[test]
     fn simple_matrix_multiply_test() {
+
+        let _ = simple_logging::log_to_file("server.log", LevelFilter::Info);
         let mut equation = Equation::new();
         let a = equation.new_variable(2, 1);
         let b = equation.new_variable(1, 2);
@@ -228,10 +237,10 @@ pub mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 2.0]);
         inputs.insert(b, vec![3.0, 4.0]);
-
+        equation.compile();
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
-        println!("result: {:?}", result);
+
         assert!(result == vec![3.0, 4.0, 6.0, 8.0]);
 
         let mut equation = Equation::new();
@@ -242,29 +251,31 @@ pub mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 2.0]);
         inputs.insert(b, vec![3.0, 4.0]);
-
+        equation.compile();
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
-        println!("result: {:?}", result);
+
         assert!(result == vec![11.0]);
     }
+
 
     #[test]
     fn simple_dif_operation_test() {
         let mut equation = Equation::new();
         let a = equation.new_variable(2, 2);
         let b = equation.new_variable(2, 2);
-        let c = equation.new_operation_in_graph(vec![a, b], Operator::Dif).unwrap();
+        let c = equation.new_operation_in_graph(vec![a, b], Operator::Diff).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert(a, vec![1.0, 1.0,
                              1.0, 1.0]);
         inputs.insert(b, vec![1.0, 1.0,
                               1.0, 1.0]);
+        equation.compile();
         equation.evaluate(&mut inputs);
 
         let result = equation.get_variable(c);
-        println!("{:?}", result);
+
         assert!(result == vec![0.0, 0.0, 0.0, 0.0]);
     }
 
@@ -280,80 +291,13 @@ pub mod tests {
                              1.0, 1.0]);
         inputs.insert(b, vec![2.0, 2.0,
                               2.0, 2.0]);
+        equation.compile();
         equation.evaluate(&mut inputs);
 
         let result = equation.get_variable(c);
-        println!("{:?}", result);
         assert!(result == vec![2.0, 2.0, 2.0, 2.0]);
     }
-
-    #[test]
-    fn simple_conv_operation() {
-        let mut equation = Equation::new();
-        let a = equation.new_variable(2, 2);
-        let b = equation.new_variable(2, 2);
-        let c = equation.new_conv_operation(a, b, 0, false).unwrap();
-        let mut inputs = HashMap::new();
-        let mut target_matrix = vec![];
-        let mut kernel = vec![];
-        for i in 0..4 {
-            target_matrix.push(i as f32);
-            kernel.push(i as f32);
-        }
-        inputs.insert(a, target_matrix);
-        inputs.insert(b, kernel);
-        equation.evaluate(&mut inputs);
-        let result = equation.get_variable(c);
-        println!("{:?}", result);
-        assert!(result == vec![14.0]);
-    }
-
-    #[test]
-    fn multi_x_conv_operation() {
-        let mut equation = Equation::new();
-        let a = equation.new_variable(2, 3);
-        let b = equation.new_variable(2, 2);
-        let c = equation.new_conv_operation(a, b, 0, false).unwrap();
-        let mut inputs = HashMap::new();
-        let mut target_matrix = vec![];
-        let mut kernel = vec![];
-        for i in 0..6 {
-            target_matrix.push(i as f32);
-        }
-        for i in 0..4 {
-            kernel.push(i as f32);
-        }
-        inputs.insert(a, target_matrix);
-        inputs.insert(b, kernel);
-        equation.evaluate(&mut inputs);
-        let result = equation.get_variable(c);
-        println!("{:?}", result);
-        assert!(result == vec![19.0, 25.0]);
-    }
-
-    #[test]
-    fn multi_y_conv_operation() {
-        let mut equation = Equation::new();
-        let a = equation.new_variable(3, 2);
-        let b = equation.new_variable(2, 2);
-        let c = equation.new_conv_operation(a, b, 0, false).unwrap();
-        let mut inputs = HashMap::new();
-        let mut target_matrix = vec![];
-        let mut kernel = vec![];
-        for i in 0..6 {
-            target_matrix.push(i as f32);
-        }
-        for i in 0..4 {
-            kernel.push(i as f32);
-        }
-        inputs.insert(a, target_matrix);
-        inputs.insert(b, kernel);
-        equation.evaluate(&mut inputs);
-        let result = equation.get_variable(c);
-        println!("{:?}", result);
-        assert!(result == vec![14.0, 26.0]);
-    }
-
+    
     #[test]
     fn basic_nn() {
 
@@ -366,14 +310,14 @@ pub mod tests {
         //First layer
         let first_dense_weight = feed_foward.new_variable(10, 10);
         let first_dense_layer = feed_foward.new_operation_in_graph(vec![input, first_dense_weight], Operator::MatrixMul).unwrap();
-        let first_dense_layer_activation = feed_foward.new_mapping_operation(first_dense_layer, Box::new(sigmoid)).unwrap();
+        let first_dense_layer_activation = feed_foward.new_mapping_operation(first_dense_layer, sigmoid).unwrap();
 
         //Backprop
         //Calculating loss
         let expected = feed_foward.new_variable(10, 1);
-        let error = feed_foward.new_operation_in_graph(vec![first_dense_layer_activation, expected], Operator::Dif).unwrap();
+        let error = feed_foward.new_operation_in_graph(vec![first_dense_layer_activation, expected], Operator::Diff).unwrap();
 
-        let derivative_of_activation = feed_foward.new_mapping_operation(first_dense_layer_activation, Box::new(sigmoid_prime)).unwrap();
+        let derivative_of_activation = feed_foward.new_mapping_operation(first_dense_layer_activation, sigmoid).unwrap();
         let delta = feed_foward.new_operation_in_graph(vec![error, derivative_of_activation], Operator::ElementWiseMul).unwrap();
         let learning_rate = feed_foward.new_variable(1, 1);
         let learning_rate_adjust_delta = feed_foward.new_operation_in_graph(vec![delta, learning_rate], Operator::Scalar).unwrap();
@@ -382,7 +326,7 @@ pub mod tests {
         let learning_rate_adjust_delta_tranposed = feed_foward.transpose(learning_rate_adjust_delta);
 
         let final_output = feed_foward.new_operation_in_graph(vec![learning_rate_adjust_delta_tranposed, input], Operator::MatrixMul).unwrap();
-        let update_weight = feed_foward.new_operation_in_graph(vec![final_output, first_dense_weight], Operator::Dif).unwrap();
+        let update_weight = feed_foward.new_operation_in_graph(vec![final_output, first_dense_weight], Operator::Diff).unwrap();
 
 
         let mut inputs = HashMap::new();
@@ -392,9 +336,10 @@ pub mod tests {
             first_input.push(i as f32);
         }
         inputs.insert(input, first_input);
+        feed_foward.compile();
         feed_foward.evaluate(&mut inputs);
     }
-    */
+    
 }
 
 pub mod prelude {
