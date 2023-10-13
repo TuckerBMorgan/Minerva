@@ -15,7 +15,7 @@ pub enum JobType {
     ElementWiseMul(usize, usize, usize, usize),
     Map(usize, usize, usize, fn(f32)->f32),
     Diff(usize, usize, usize, usize),
-    Scalar,
+    Scalar(usize, usize, usize, usize),
     Conv,
     Fence,
     End
@@ -40,6 +40,10 @@ impl JobType {
 
     pub fn new_map_type(lhs_start: usize, destination_start: usize, length: usize, mapping_function: fn(f32) -> f32) -> JobType {
         return JobType::Map(lhs_start, destination_start, length, mapping_function);
+    }
+
+    pub fn new_scaler_type(lhs_start: usize, rhs_start: usize, destination_start: usize, length: usize) -> JobType {
+        return JobType::Scalar(lhs_start, rhs_start, destination_start, length);
     }
 }
 
@@ -573,6 +577,9 @@ impl Equation {
                 },
                 Operator::ElementWiseMul => {
                     self.jobs.append(&mut compile_element_wise_mul_job(variable_tokens, self.memory_token[&op.output_variable]));
+                }
+                Operator::Scalar => {
+                    self.jobs.append(&mut compile_scalar_operation(variable_tokens, self.memory_token[&op.output_variable]));
                 }
                 _ => {
 

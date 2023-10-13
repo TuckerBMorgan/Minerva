@@ -28,6 +28,9 @@ pub fn worker_thread(thread_number: usize, mut memory_ptr: JobPtr, to_equation_s
                     },
                     JobType::ElementWiseMul(lhs, rhs, destination, length) => {
                         preform_element_wise_mul_job(lhs, rhs, destination, length, &mut memory_ptr);
+                    },
+                    JobType::Scalar(lhs, rhs, destination, length) => {
+                        preform_scaler_operation(lhs, rhs, destination, length, &mut memory_ptr);
                     }
                     JobType::End => {
                         break;

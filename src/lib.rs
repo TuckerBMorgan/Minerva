@@ -8,6 +8,7 @@ pub mod tests {
     pub use crate::operations::*;
     use log::LevelFilter;
     use log::info;
+    use rand::Rng;
     /*
 //    pub use crate::equation::*;
 */
@@ -297,7 +298,7 @@ pub mod tests {
         let result = equation.get_variable(c);
         assert!(result == vec![2.0, 2.0, 2.0, 2.0]);
     }
-    
+
     #[test]
     fn basic_nn() {
 
@@ -331,13 +332,31 @@ pub mod tests {
 
         let mut inputs = HashMap::new();
         let mut first_input = vec![];
+        let mut expected_input = vec![];
 
         for i in 0..10 {
             first_input.push(i as f32);
+            expected_input.push(i as f32);
         }
+
+        let mut first_weight_init = vec![];
+        let mut randoms = rand::thread_rng();
+        for i in 0..100 {
+            first_weight_init.push(randoms.gen_range(-1.0..1.0));
+        }
+        let learning_rate_input = vec![1.0];
         inputs.insert(input, first_input);
+        inputs.insert(first_dense_weight, first_weight_init);
+        inputs.insert(expected, expected_input);
+        inputs.insert(learning_rate, learning_rate_input);
+
         feed_foward.compile();
         feed_foward.evaluate(&mut inputs);
+        let result = feed_foward.get_variable(delta);
+        let a: Vec<f32> = feed_foward.get_variable(learning_rate);
+        let b = feed_foward.get_variable(final_output);
+        println!("{:?}", result);
+        println!("---");
     }
     
 }
