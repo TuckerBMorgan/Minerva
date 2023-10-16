@@ -353,8 +353,8 @@ pub mod tests {
         feed_foward.compile();
         feed_foward.evaluate(&mut inputs);
         let result = feed_foward.get_variable(delta);
-        let a: Vec<f32> = feed_foward.get_variable(learning_rate);
-        let b = feed_foward.get_variable(final_output);
+        let a: Vec<f32> = feed_foward.get_variable(learning_rate_adjust_delta);
+        let b = feed_foward.get_variable(learning_rate_adjust_delta_tranposed);
         println!("{:?}", result);
         println!("---");
     }

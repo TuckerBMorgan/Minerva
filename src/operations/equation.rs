@@ -51,7 +51,8 @@ impl JobType {
 pub struct VariableToken {
     name: u64,
     pub x_size: usize,
-    pub y_size: usize
+    pub y_size: usize,
+    pub transposed: bool
 }
 
 impl VariableToken {
@@ -59,7 +60,8 @@ impl VariableToken {
         VariableToken {
             name,
             x_size,
-            y_size
+            y_size,
+            transposed: false
         }
     }
 }
