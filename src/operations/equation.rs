@@ -11,7 +11,7 @@ use log::info;
 #[derive(Copy, Clone)]
 pub enum JobType {
     Add(usize, usize, usize, usize),
-    MatrixMul(usize, usize, usize, usize, usize, usize, usize, usize),
+    MatrixMul(MemoryToken, MemoryToken, MemoryToken, usize, usize),
     ElementWiseMul(usize, usize, usize, usize),
     Map(usize, usize, usize, fn(f32)->f32),
     Diff(usize, usize, usize, usize),
@@ -34,8 +34,8 @@ impl JobType {
         return JobType::Diff(lhs_start, rhs_start, destination_start, length);
     }
 
-    pub fn new_matrix_mul_type(lhs_start: usize, rhs_start: usize, destination_start: usize, output_x: usize, output_y: usize, output_y_start: usize, output_y_end: usize,shared_z: usize) -> JobType {
-        return JobType::MatrixMul(lhs_start, rhs_start, destination_start, output_x, output_y, output_y_start, output_y_end, shared_z);
+    pub fn new_matrix_mul_type(left_hand_side: MemoryToken, right_hand_side: MemoryToken, destination: MemoryToken, output_start: usize, output_end: usize) -> JobType {
+        return JobType::MatrixMul(left_hand_side, right_hand_side, destination, output_start, output_end);
     }
 
     pub fn new_map_type(lhs_start: usize, destination_start: usize, length: usize, mapping_function: fn(f32) -> f32) -> JobType {
@@ -107,7 +107,8 @@ pub struct MemoryToken {
     pub x_dim: usize,
     pub y_dim: usize,
     pub start: usize,
-    pub size: usize
+    pub size: usize,
+    pub transposed: bool
 }
 
 impl MemoryToken {
@@ -116,7 +117,8 @@ impl MemoryToken {
             x_dim,
             y_dim,
             start,
-            size: x_dim * y_dim
+            size: x_dim * y_dim,
+            transposed: false
         }
     }
 }
@@ -178,11 +180,11 @@ impl Operation {
 pub struct Equation {
     variables: HashMap<VariableToken, Variable>,
     operations: HashMap<VariableToken, Operation>,
-    memory_token: HashMap<VariableToken, MemoryToken>,
+    pub memory_token: HashMap<VariableToken, MemoryToken>,
     mapping_functions: HashMap<VariableToken, fn(f32)->f32>,
     has_been_compiled: bool,
     variable_count: usize,
-    memory: Vec<f32>,
+    pub memory: Vec<f32>,
     jobs: Vec<JobType>,
     is_compiled: bool
 }
@@ -220,9 +222,27 @@ impl Equation {
         return variable_token;
     }
 
+    //Minerva is Col major lib
+    fn new_variable_transposed(&mut self, y_size: usize, x_size: usize) -> VariableToken {
+        //A name is a UID for any amount of data that gets either feed into, or is computed as part of the equation
+        let name = self.get_new_name();
+        let mut variable_token = VariableToken::new(name, x_size, y_size);
+        variable_token.transposed = true;
+        //A variable is a node in the graph
+        let variable = Variable::new(x_size, y_size, name);
+        self.variables.insert(variable_token, variable);
+
+        //This represents the actually values that make up the variable
+        let memory_token = MemoryToken::new(x_size, y_size, self.memory.len());
+        self.memory.append(&mut vec![0.0;x_size * y_size]);
+        self.memory_token.insert(variable_token, memory_token);
+
+        return variable_token;
+    }
+
     pub fn transpose(&mut self, variable_token: VariableToken) -> VariableToken {
-        let new_variable_token = self.new_variable(variable_token.x_size, variable_token.y_size);
-        self.copy_and_transpose_variable(self.memory_token[&variable_token], self.memory_token[&new_variable_token]);
+        let mut new_variable_token = self.new_variable_transposed(variable_token.x_size, variable_token.y_size);
+        self.memory_token.get_mut(&new_variable_token).unwrap().transposed = true;
         return new_variable_token;
     }
 
@@ -320,7 +340,7 @@ impl Equation {
         //Copy the mapping function in
         let original_value = &self.variables[&operand].clone();
         //Create the memory for the output of the mapping
-        let output_variable = self.new_variable(original_value.x, original_value.y);
+        let output_variable = self.new_variable(original_value.y, original_value.x);
 
         //Add it to the dependency graph
         self.variables.get_mut(&operand).unwrap().add_dependant_operation(output_variable);
@@ -559,29 +579,29 @@ impl Equation {
 
         while sorted_opertions.len() > 0 {
             let op = sorted_opertions.pop().unwrap();
-            let mut variable_tokens = vec![];
+            let mut memory_tokens = vec![];
             for variable in &op.inputs_in_order {
-                variable_tokens.push(self.memory_token[&variable]);
+                memory_tokens.push(self.memory_token[&variable]);
             }
 
             match op.operator {
                 Operator::Add => {
-                    self.jobs.append(&mut compile_add_operation(variable_tokens, self.memory_token[&op.output_variable]));
+                    self.jobs.append(&mut compile_add_operation(memory_tokens, self.memory_token[&op.output_variable]));
                 },
                 Operator::Diff => {
-                    self.jobs.append(&mut compile_diff_operation(variable_tokens, self.memory_token[&op.output_variable]));
+                    self.jobs.append(&mut compile_diff_operation(memory_tokens, self.memory_token[&op.output_variable]));
                 }
                 Operator::MatrixMul => {
-                    self.jobs.append(&mut compile_matrix_mul_operation(variable_tokens, self.memory_token[&op.output_variable]));
+                    self.jobs.append(&mut compile_matrix_mul_operation(memory_tokens, self.memory_token[&op.output_variable]));
                 }
                 Operator::Map => {
-                    self.jobs.append(&mut compile_map_operation(variable_tokens, self.memory_token[&op.output_variable], self.mapping_functions[&op.output_variable]));
+                    self.jobs.append(&mut compile_map_operation(memory_tokens, self.memory_token[&op.output_variable], self.mapping_functions[&op.output_variable]));
                 },
                 Operator::ElementWiseMul => {
-                    self.jobs.append(&mut compile_element_wise_mul_job(variable_tokens, self.memory_token[&op.output_variable]));
+                    self.jobs.append(&mut compile_element_wise_mul_job(memory_tokens, self.memory_token[&op.output_variable]));
                 }
                 Operator::Scalar => {
-                    self.jobs.append(&mut compile_scalar_operation(variable_tokens, self.memory_token[&op.output_variable]));
+                    self.jobs.append(&mut compile_scalar_operation(memory_tokens, self.memory_token[&op.output_variable]));
                 }
                 _ => {
 

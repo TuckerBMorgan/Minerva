@@ -5,6 +5,7 @@ mod operations;
 #[cfg(test)]
 pub mod tests {
     use std::collections::{HashMap};
+    use std::hash::Hash;
     pub use crate::operations::*;
     use log::LevelFilter;
     use log::info;
@@ -358,7 +359,99 @@ pub mod tests {
         println!("{:?}", result);
         println!("---");
     }
+
+    #[test]
+    fn big_test() {
+        let input_size = 2;
+        let hidden_size1 = 5;
+        let hidden_size2 = 5;
+        let output_size = 1;
+        let batch_size = 1;
+
+        let mut feed_foward = Equation::new();
+        // Forward Pass
+        // if you make the Y(first dimenion) larger here, that is more or less batches
+        let input = feed_foward.new_variable(input_size, batch_size);
+
+        let first_dense_weight =   feed_foward.new_variable(hidden_size1, input_size);
+        let first_forward_pass =   feed_foward.new_operation_in_graph(vec![first_dense_weight, input], Operator::MatrixMul).unwrap();
+        let first_bias_weights =   feed_foward.new_variable(first_forward_pass.y_size, first_forward_pass.x_size);
+        println!("First Dense Weights {:?}", first_dense_weight);
+        println!("First Foward Pass {:?}", first_forward_pass);
+        println!("First Bias Weights {:?}", first_bias_weights);
+        let first_bias_offset =    feed_foward.new_operation_in_graph(vec![first_forward_pass, first_bias_weights], Operator::Add).unwrap();
+
+        let first_sigmoid_mapping = feed_foward.new_mapping_operation(first_bias_offset, sigmoid).unwrap();
+        println!("First Sigmoid Mapping {:?}", first_sigmoid_mapping);
+        let second_dense_weights = feed_foward.new_variable(hidden_size1, hidden_size2);
+        println!("Second Dense Weights {:?}", second_dense_weights);
+        let second_forward_pass =  feed_foward.new_operation_in_graph(vec![second_dense_weights, first_sigmoid_mapping], Operator::MatrixMul).unwrap();
+        println!("Second Forward Pass {:?}", second_forward_pass);
+        let second_bias_weights =  feed_foward.new_variable(second_forward_pass.y_size, second_forward_pass.x_size);
+        println!("Second Bias Weights {:?}", second_bias_weights);
+        let second_bias_offset = feed_foward.new_operation_in_graph(vec![second_forward_pass, second_bias_weights], Operator::Add).unwrap();
+        let second_sigmoid_mapping = feed_foward.new_mapping_operation(second_bias_offset, sigmoid).unwrap();
+
+        let third_dense_weights = feed_foward.new_variable(hidden_size2, output_size);
+        let third_forward_pass = feed_foward.new_operation_in_graph(vec![second_sigmoid_mapping, third_dense_weights], Operator::MatrixMul).unwrap();
+        let third_bias_weight = feed_foward.new_variable(third_forward_pass.y_size, third_forward_pass.x_size);
+        let third_bias_offset = feed_foward.new_operation_in_graph(vec![third_forward_pass, third_bias_weight], Operator::Add).unwrap();
+        let third_sigmoid_mapping = feed_foward.new_mapping_operation(third_bias_offset, sigmoid).unwrap();
+        
+
+
+        let target = feed_foward.new_variable(batch_size, output_size);
+        let target_error = feed_foward.new_operation_in_graph(vec![third_sigmoid_mapping, target], Operator::Diff).unwrap();
+        let second_sigmoid_mapping_transpose = feed_foward.transpose(second_sigmoid_mapping);
+        println!("{:?}", second_sigmoid_mapping);
+        println!("{:?}", second_sigmoid_mapping_transpose);
+        println!("{:?}", target_error);
+        let third_dense_weight_delta = feed_foward.new_operation_in_graph(vec![second_sigmoid_mapping_transpose, target_error], Operator::MatrixMul).unwrap();
+        
+        // the first bias delta offset is target_error
+        let third_weight_transpose = feed_foward.transpose(third_dense_weights);
+        let second_sigmoid_derivative = feed_foward.new_mapping_operation(second_sigmoid_mapping, sigmoid_prime).unwrap();
+        let second_layer_middle_opeartion = feed_foward.new_operation_in_graph(vec![target_error, third_weight_transpose], Operator::MatrixMul).unwrap();
+        let second_dense_middle_operation = feed_foward.new_operation_in_graph(vec![second_layer_middle_opeartion, second_sigmoid_derivative], Operator::ElementWiseMul).unwrap();
+        let first_sigmoid_tranpose = feed_foward.transpose(first_sigmoid_mapping);
+        let second_dense_weight_delta = feed_foward.new_operation_in_graph(vec![first_sigmoid_tranpose, second_dense_middle_operation], Operator::MatrixMul);
+        // second_dense_middle_operation is the second_bias_delta
+
+        let second_weight_transpose = feed_foward.transpose(second_dense_weights);
+        let first_sigmoid_derivative = feed_foward.new_mapping_operation(first_sigmoid_mapping, sigmoid_prime).unwrap();
+        println!("{:?}", second_dense_weights);
+        println!("{:?}", second_dense_middle_operation);
+        println!("{:?}", second_weight_transpose);
+        let first_layer_middle_opeartion = feed_foward.new_operation_in_graph(vec![second_dense_middle_operation, second_weight_transpose], Operator::MatrixMul).unwrap();
+        let first_dense_middle_operation = feed_foward.new_operation_in_graph(vec![first_layer_middle_opeartion, first_sigmoid_derivative], Operator::ElementWiseMul).unwrap();
+        let input_tranpose = feed_foward.transpose(input);
+        let first_dense_weight_delta = feed_foward.new_operation_in_graph(vec![input_tranpose, first_dense_middle_operation], Operator::MatrixMul).unwrap();
+        // first_dense_middle_opeartion is delta bias
+        
+
+        feed_foward.compile();
+        let mut inputs = HashMap::new();
+        inputs.insert(input, vec![0.0, 0.0]);
+        feed_foward.evaluate(&mut inputs);
+    }
     
+
+    #[test] 
+    fn what_test() {
+        let mut feed_foward = Equation::new();
+        let a =   feed_foward.new_variable(3, 2);
+        let b =   feed_foward.new_variable(2, 3);
+        let a_t = feed_foward.transpose(a);
+        let x = feed_foward.new_operation_in_graph(vec![a, b], Operator::MatrixMul).unwrap();
+        let mut inputs = HashMap::new();
+        inputs.insert(a, vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+        inputs.insert(b, vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+
+        feed_foward.compile();
+        feed_foward.evaluate(&mut inputs);
+
+        println!("{:?}", feed_foward.get_variable(x));
+    }
 }
 
 pub mod prelude {

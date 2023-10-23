@@ -20,8 +20,8 @@ pub fn worker_thread(thread_number: usize, mut memory_ptr: JobPtr, to_equation_s
                     JobType::Diff(lhs, rhs, destination, length) => {
                         preform_diff_job(lhs, rhs, destination, length, &mut memory_ptr);
                     },
-                    JobType::MatrixMul(lhs, rhs, destination_start, output_x, output_y, output_y_start, output_y_end, shared_z) => {
-                        preform_matrix_mul_job(lhs, rhs, destination_start, output_x, output_y, output_y_start, output_y_end, shared_z, &mut memory_ptr);
+                    JobType::MatrixMul(lhs, rhs, destination_start, output_x, output_y) => {
+                        preform_matrix_multiplication_job(lhs, rhs, destination_start, output_x, output_y, &mut memory_ptr);
                     },
                     JobType::Map(lhs, destination_start,length,mapping_function) => {
                         preform_map_operation(lhs, destination_start, length, mapping_function, &mut memory_ptr);
