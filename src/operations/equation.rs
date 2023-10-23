@@ -265,8 +265,8 @@ impl Equation {
                 if lhs.x != rhs.x || lhs.y != rhs.y {
                     return Err("You may only add matrices of the same size");
                 }
-                size.0 = lhs.x;
-                size.1 = lhs.y;
+                size.0 = lhs.y;
+                size.1 = lhs.x;
             },
             Operator::ElementWiseMul => {
                 if operands.len() != 2 {
@@ -277,8 +277,8 @@ impl Equation {
                 if lhs.x != rhs.x || lhs.y != rhs.y {
                     return Err("You may only Element Wise Mul matrices of the same size");
                 }
-                size.0 = lhs.x;
-                size.1 = lhs.y;
+                size.0 = lhs.y;
+                size.1 = lhs.x;
 
             },
             Operator::Diff => {
@@ -291,8 +291,8 @@ impl Equation {
                 if lhs.x != rhs.x || lhs.y != rhs.y {
                     return Err("You may only diff matrices of the same size");
                 }
-                size.0 = lhs.x;
-                size.1 = lhs.y;
+                size.0 = lhs.y;
+                size.1 = lhs.x;
             },
             Operator::MatrixMul => {
                 if operands.len() != 2 {
@@ -300,11 +300,11 @@ impl Equation {
                 }
                 let lhs = self.variables.get(&operands[0]).unwrap();
                 let rhs = self.variables.get(&operands[1]).unwrap();
-                if lhs.x != rhs.y {
+                if lhs.y != rhs.x {
                     return Err("Incomptabile matrices");
                 }
-                size.0 = lhs.y;
-                size.1 = rhs.x;
+                size. 1 = lhs.x;
+                size.0 = rhs.y;
             },
             Operator::Map => {
                 panic!("Dont use new_operation for a mapping opertion, use new_mapping_operation");
@@ -319,8 +319,8 @@ impl Equation {
                 if rhs.x != 1 || rhs.y != 1 {
                     return Err("The right hand side of a Scalar op must be a matrix of 1x1 size");
                 }
-                size.0 = lhs.x;
-                size.1 = lhs.y;
+                size.0 = lhs.y;
+                size.1 = lhs.x;
             },
             Operator::Conv => {
                 panic!("Dont use new_operation for a conv opertion, use new_conv_operations");
@@ -335,7 +335,7 @@ impl Equation {
         return Ok(output_variable);
     }
 
-    #[inline(always)]
+//    #[inline(always)]
     pub fn new_mapping_operation(&mut self, operand: VariableToken, function: fn(f32)->f32) -> Result<VariableToken, &'static str> {
         //Copy the mapping function in
         let original_value = &self.variables[&operand].clone();
