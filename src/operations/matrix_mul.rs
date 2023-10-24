@@ -4,7 +4,7 @@ use log::info;
 pub fn compile_matrix_mul_operation(inputs: Vec<MemoryToken>, output_variable: MemoryToken) -> Vec<JobType> {
     let cpus = (num_cpus::get() - 1) as usize;//Give our computer some room to breath
     let mut jobs = vec![];
-    if output_variable.y_dim > cpus {
+    if true || output_variable.y_dim > cpus {
         let mul_job = JobType::new_matrix_mul_type(inputs[0], inputs[1], output_variable, 0, output_variable.size);
         jobs.push(mul_job);
     }
@@ -33,21 +33,21 @@ pub fn preform_matrix_multiplication_job(left_hand_side: MemoryToken, right_hand
         for y in output_start..ouput_end {
             for x in 0..destination.x_dim {
                 let mut running_total = 0.0f32;
-                for z in 0..left_hand_side.x_dim {
+                for z in 0..left_hand_side.y_dim {
                     let left_side_index;
                     if left_hand_side.transposed {
                         left_side_index = z * left_hand_side.y_dim + y;
                     }
                     else {
-                        left_side_index = z + (y * left_hand_side.x_dim);
+                        left_side_index = z + (y * left_hand_side.y_dim);
                     }
 
                     let right_side_index;
                     if right_hand_side.transposed {
-                        right_side_index = x * right_hand_side.y_dim + z;
+                        right_side_index = x * right_hand_side.x_dim + z;
                     }
                     else {
-                        right_side_index = x + (right_hand_side.x_dim * z);
+                        right_side_index = x + (right_hand_side.y_dim * z);
                     }
                     let left_offset = left_hand_side.start + left_side_index;
                     let right_offset = right_hand_side.start + right_side_index;

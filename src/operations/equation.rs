@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use crate::operations::*;
 use std::thread;
 use std::sync::mpsc::channel;
+use rand::Rng;
 use stopwatch::{Stopwatch};
 use log::info;
 // JobType: Enum used for both laying out the total work
@@ -758,7 +759,7 @@ impl Equation {
         let mut rng = rand::thread_rng();
         let token = self.memory_token[&variable_name];
         for i in 0..token.size {
-            self.memory[token.start + i] = 0.;
+            self.memory[token.start + i] = rng.gen_range(0.0..1.0);
         }
     }
 

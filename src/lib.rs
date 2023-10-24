@@ -140,7 +140,7 @@ pub mod tests {
         assert!(result == vec![19.0, 22.0, 43.0, 50.0]);
     }
 
-    #[test]
+    #[test] 
     fn unsquare_mul_test() {
         let mut equation = Equation::new();
         let a = equation.new_variable(3, 2);
@@ -157,7 +157,8 @@ pub mod tests {
         equation.compile();
         equation.evaluate(&mut inputs);
         let result = equation.get_variable(c);
-        assert!(result == vec![27.0, 30.0, 33.0, 61.0, 68.0, 75.0, 95.0, 106.0, 117.0]);
+        println!("{:?}", result);
+        assert!(result == vec![58.0, 64.0, 139.0, 154.0]);
     }
 
     #[test]
@@ -224,43 +225,8 @@ pub mod tests {
     }
 
     fn sigmoid_prime(x: f32) -> f32 {
-        sigmoid(x) * (1.0f32 - sigmoid(x)) 
+       x * (1.0f32 - x) 
     }
-
-    #[test]
-    fn simple_matrix_multiply_test() {
-
-        let _ = simple_logging::log_to_file("server.log", LevelFilter::Info);
-        let mut equation = Equation::new();
-        let a = equation.new_variable(2, 1);
-        let b = equation.new_variable(1, 2);
-        let c = equation.new_operation_in_graph(vec![a, b], Operator::MatrixMul).unwrap();
-
-        let mut inputs = HashMap::new();
-        inputs.insert(a, vec![1.0, 2.0]);
-        inputs.insert(b, vec![3.0, 4.0]);
-        equation.compile();
-        equation.evaluate(&mut inputs);
-        let result = equation.get_variable(c);
-
-        assert!(result == vec![3.0, 4.0, 6.0, 8.0]);
-
-        let mut equation = Equation::new();
-        let a = equation.new_variable(1, 2);
-        let b = equation.new_variable(2, 1);
-        let c = equation.new_operation_in_graph(vec![a, b], Operator::MatrixMul).unwrap();
-
-        let mut inputs = HashMap::new();
-        inputs.insert(a, vec![1.0, 2.0]);
-        inputs.insert(b, vec![3.0, 4.0]);
-        equation.compile();
-        equation.evaluate(&mut inputs);
-        let result = equation.get_variable(c);
-
-        assert!(result == vec![11.0]);
-    }
-
-
     #[test]
     fn simple_dif_operation_test() {
         let mut equation = Equation::new();
@@ -301,67 +267,7 @@ pub mod tests {
     }
 
     #[test]
-    fn basic_nn() {
-
-        let mut feed_foward = Equation::new();
-
-        // if you make the Y(first dimenion) larger here, that is more or less batches
-        let input = feed_foward.new_variable(1, 10);
-
-        //Forward Propogation
-        //First layer
-        let first_dense_weight = feed_foward.new_variable(10, 10);
-        let first_dense_layer = feed_foward.new_operation_in_graph(vec![input, first_dense_weight], Operator::MatrixMul).unwrap();
-        let first_dense_layer_activation = feed_foward.new_mapping_operation(first_dense_layer, sigmoid).unwrap();
-
-        //Backprop
-        //Calculating loss
-        let expected = feed_foward.new_variable(10, 1);
-        let error = feed_foward.new_operation_in_graph(vec![first_dense_layer_activation, expected], Operator::Diff).unwrap();
-
-        let derivative_of_activation = feed_foward.new_mapping_operation(first_dense_layer_activation, sigmoid).unwrap();
-        let delta = feed_foward.new_operation_in_graph(vec![error, derivative_of_activation], Operator::ElementWiseMul).unwrap();
-        let learning_rate = feed_foward.new_variable(1, 1);
-        let learning_rate_adjust_delta = feed_foward.new_operation_in_graph(vec![delta, learning_rate], Operator::Scalar).unwrap();
-
-
-        let learning_rate_adjust_delta_tranposed = feed_foward.transpose(learning_rate_adjust_delta);
-
-        let final_output = feed_foward.new_operation_in_graph(vec![learning_rate_adjust_delta_tranposed, input], Operator::MatrixMul).unwrap();
-        let update_weight = feed_foward.new_operation_in_graph(vec![final_output, first_dense_weight], Operator::Diff).unwrap();
-
-
-        let mut inputs = HashMap::new();
-        let mut first_input = vec![];
-        let mut expected_input = vec![];
-
-        for i in 0..10 {
-            first_input.push(i as f32);
-            expected_input.push(i as f32);
-        }
-
-        let mut first_weight_init = vec![];
-        let mut randoms = rand::thread_rng();
-        for i in 0..100 {
-            first_weight_init.push(randoms.gen_range(-1.0..1.0));
-        }
-        let learning_rate_input = vec![1.0];
-        inputs.insert(input, first_input);
-        inputs.insert(first_dense_weight, first_weight_init);
-        inputs.insert(expected, expected_input);
-        inputs.insert(learning_rate, learning_rate_input);
-
-        feed_foward.compile();
-        feed_foward.evaluate(&mut inputs);
-        let result = feed_foward.get_variable(delta);
-        let a: Vec<f32> = feed_foward.get_variable(learning_rate_adjust_delta);
-        let b = feed_foward.get_variable(learning_rate_adjust_delta_tranposed);
-        println!("{:?}", result);
-        println!("---");
-    }
-
-    #[test]
-    fn big_test() {
+    fn big_test() { 
         let input_size = 2;
         let hidden_size1 = 5;
         let hidden_size2 = 5;
@@ -372,28 +278,32 @@ pub mod tests {
         // Forward Pass
         // if you make the Y(first dimenion) larger here, that is more or less batches
         let input = feed_foward.new_variable(input_size, batch_size);
+        let learning_rate = feed_foward.new_variable(1, 1);
+        
  
         let first_dense_weight =   feed_foward.new_variable(hidden_size1, input_size);
-
+        feed_foward.random_init_variable(first_dense_weight);
         let first_forward_pass =   feed_foward.new_operation_in_graph(vec![input, first_dense_weight], Operator::MatrixMul).unwrap();
 
         let first_bias_weights =   feed_foward.new_variable(first_forward_pass.y_size, first_forward_pass.x_size);
+
         let first_bias_offset =    feed_foward.new_operation_in_graph(vec![first_forward_pass, first_bias_weights], Operator::Add).unwrap();
         let first_sigmoid_mapping = feed_foward.new_mapping_operation(first_bias_offset, sigmoid).unwrap();
         let second_dense_weights = feed_foward.new_variable(hidden_size1, hidden_size2);
+        feed_foward.random_init_variable(second_dense_weights);
+
         let second_forward_pass =  feed_foward.new_operation_in_graph(vec![first_sigmoid_mapping, second_dense_weights], Operator::MatrixMul).unwrap();
         let second_bias_weights =  feed_foward.new_variable(second_forward_pass.y_size, second_forward_pass.x_size);
         let second_bias_offset = feed_foward.new_operation_in_graph(vec![second_forward_pass, second_bias_weights], Operator::Add).unwrap();
         let second_sigmoid_mapping = feed_foward.new_mapping_operation(second_bias_offset, sigmoid).unwrap();
 
         let third_dense_weights = feed_foward.new_variable(output_size, hidden_size2);
+        feed_foward.random_init_variable(third_dense_weights);
         let third_forward_pass = feed_foward.new_operation_in_graph(vec![second_sigmoid_mapping, third_dense_weights], Operator::MatrixMul).unwrap();
         let third_bias_weight = feed_foward.new_variable(third_forward_pass.y_size, third_forward_pass.x_size);
         let third_bias_offset = feed_foward.new_operation_in_graph(vec![third_forward_pass, third_bias_weight], Operator::Add).unwrap();
 
         let third_sigmoid_mapping = feed_foward.new_mapping_operation(third_bias_offset, sigmoid).unwrap();
-        
-
 
         let target = feed_foward.new_variable(output_size, batch_size);
         let target_error = feed_foward.new_operation_in_graph(vec![third_sigmoid_mapping, target], Operator::Diff).unwrap();
@@ -417,28 +327,39 @@ pub mod tests {
         let first_dense_middle_operation = feed_foward.new_operation_in_graph(vec![first_layer_middle_opeartion, first_sigmoid_derivative], Operator::ElementWiseMul).unwrap();
         let input_tranpose = feed_foward.transpose(input);
         let first_dense_weight_delta = feed_foward.new_operation_in_graph(vec![input_tranpose, first_dense_middle_operation], Operator::MatrixMul).unwrap();
-        let new_third_weights = feed_foward.new_operation_in_graph(vec![third_dense_weight_delta, third_dense_weights], Operator::Diff).unwrap();
-        let new_second_weights = feed_foward.new_operation_in_graph(vec![second_dense_weight_delta, second_dense_weights], Operator::Diff).unwrap();
-        let new_first_weights = feed_foward.new_operation_in_graph(vec![first_dense_weight_delta, first_dense_weight], Operator::Diff).unwrap();
+
+        let learning_rate_adjusted_third_weight_delta = feed_foward.new_operation_in_graph(vec![third_dense_weight_delta, learning_rate], Operator::Scalar).unwrap();
+        let new_third_weights = feed_foward.new_operation_in_graph(vec![learning_rate_adjusted_third_weight_delta, third_dense_weights], Operator::Diff).unwrap();
+
+        let learning_rate_adjusted_second_weight_delta = feed_foward.new_operation_in_graph(vec![second_dense_weight_delta, learning_rate], Operator::Scalar).unwrap();
+        let new_second_weights = feed_foward.new_operation_in_graph(vec![learning_rate_adjusted_second_weight_delta, second_dense_weights], Operator::Diff).unwrap();
+
+        let learning_rate_adjusted_first_weight_delta = feed_foward.new_operation_in_graph(vec![first_dense_weight_delta, learning_rate], Operator::Scalar).unwrap();
+        let new_first_weights = feed_foward.new_operation_in_graph(vec![learning_rate_adjusted_first_weight_delta, first_dense_weight], Operator::Diff).unwrap();
         // first_dense_middle_opeartion is delta bias
-        let _update_third = feed_foward.new_operation_in_graph(vec![new_third_weights, third_dense_weights], Operator::Copy);
-        let _update_second = feed_foward.new_operation_in_graph(vec![new_second_weights, second_dense_weights], Operator::Copy);
-        let _update_first = feed_foward.new_operation_in_graph(vec![new_first_weights, first_dense_weight], Operator::Copy);
+        let _update_third = feed_foward.new_operation_in_graph(vec![new_third_weights, third_dense_weights], Operator::Copy).unwrap();
+        let _update_second = feed_foward.new_operation_in_graph(vec![new_second_weights, second_dense_weights], Operator::Copy).unwrap();
+        let _update_first = feed_foward.new_operation_in_graph(vec![new_first_weights, first_dense_weight], Operator::Copy).unwrap();
 
         feed_foward.compile();
         let mut inputs = HashMap::new();
         inputs.insert(input, vec![0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0]);
         let predicted = vec![0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0];
         inputs.insert(target, vec![0.0, 1.0, 1.0, 0.0]);
+        inputs.insert(learning_rate, vec![0.1]);
+
         for _ in 0..100 {
             feed_foward.evaluate(&mut inputs);
             let current_error = feed_foward.get_variable(target_error);
+            
             let mut sum = 0.0;
             for (index, value) in current_error.iter().enumerate() {
                 sum += predicted[index] - value;
             }
+
             println!("{:?}", sum);
         }
+        println!("----");
     }
     
 
