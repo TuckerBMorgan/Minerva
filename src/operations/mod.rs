@@ -6,6 +6,7 @@ mod worker;
 mod element_wise_mul;
 mod scaler;
 mod map;
+mod copy;
 
 
 pub use equation::*;
@@ -16,3 +17,4 @@ pub use worker::*;
 pub use map::*;
 pub use element_wise_mul::*;
 pub use scaler::*;
+pub use copy::*;

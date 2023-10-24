@@ -16,6 +16,7 @@ pub enum JobType {
     Map(usize, usize, usize, fn(f32)->f32),
     Diff(usize, usize, usize, usize),
     Scalar(usize, usize, usize, usize),
+    Copy(MemoryToken, MemoryToken),
     Conv,
     Fence,
     End
@@ -44,6 +45,10 @@ impl JobType {
 
     pub fn new_scaler_type(lhs_start: usize, rhs_start: usize, destination_start: usize, length: usize) -> JobType {
         return JobType::Scalar(lhs_start, rhs_start, destination_start, length);
+    }
+
+    pub fn new_copy_type(from: MemoryToken, to: MemoryToken) -> JobType {
+        return JobType::Copy(from, to);
     }
 }
 
@@ -99,7 +104,8 @@ pub enum Operator {
     Map,
     Diff,
     Scalar,
-    Conv
+    Conv,
+    Copy
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -324,6 +330,19 @@ impl Equation {
             },
             Operator::Conv => {
                 panic!("Dont use new_operation for a conv opertion, use new_conv_operations");
+            },
+            Operator::Copy => {
+                if operands.len() != 2 {
+                    return Err("Incorrect number of operands for Copy opertions, want 2");
+                }
+
+                let lhs = self.variables.get(&operands[0]).unwrap();
+                let rhs = self.variables.get(&operands[1]).unwrap();
+                if lhs.x != rhs.x || lhs.y != rhs.y {
+                    return Err("You may only copy matrices of the same size");
+                }
+                size.0 = lhs.y;
+                size.1 = lhs.x;
             }
         }
         let output_variable = self.new_variable(size.0, size.1);
@@ -602,10 +621,14 @@ impl Equation {
                 }
                 Operator::Scalar => {
                     self.jobs.append(&mut compile_scalar_operation(memory_tokens, self.memory_token[&op.output_variable]));
+                },
+                Operator::Copy => {
+                    self.jobs.append(&mut compile_copy_operation(memory_tokens[0], memory_tokens[1]));
                 }
                 _ => {
 
                 }
+
             }
         }
         /*

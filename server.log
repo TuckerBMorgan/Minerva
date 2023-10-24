@@ -1,21 +1,7 @@
-[00:00:00.001] (7000042b2000) INFO   Compiling took 0
-[00:00:00.001] (7000042b2000) INFO   fill in input took 0
-[00:00:00.001] (7000046b8000) INFO   Compiling took 0
-[00:00:00.002] (700003aa6000) INFO   Evaluation took 2
-[00:00:00.002] (700003ca9000) INFO   Evaluation took 3
-[00:00:00.002] (7000038a3000) INFO   Evaluation took 2
-[00:00:00.002] (7000046b8000) INFO   fill in input took 0
-[00:00:00.003] (7000048bb000) INFO   Evaluation took 4
-[00:00:00.003] (7000044b5000) INFO   Evaluation took 4
-[00:00:00.004] (7000036a0000) INFO   Evaluation took 4
-[00:00:00.004] (7000040af000) INFO   Evaluation took 3
-[00:00:00.005] (7000040af000) INFO   Compiling took 0
-[00:00:00.005] (7000042b2000) INFO   Evaluation took 3
-[00:00:00.005] (700003eac000) INFO   Evaluation took 3
-[00:00:00.005] (7000040af000) INFO   fill in input took 0
-[00:00:00.005] (7000046b8000) INFO   Evaluation took 2
-[00:00:00.005] (7000046b8000) INFO   [24.0, 28.0, 29.0, 34.0]
-[00:00:00.006] (7000040af000) INFO   Evaluation took 0
-[00:00:03.191] (70000349d000) INFO   Compiling took 0
-[00:00:08.066] (70000349d000) INFO   fill in input took 4874
-[00:00:09.672] (70000349d000) INFO   Evaluation took 1606
+[00:00:00.000] (504c) INFO   Compiling took 0
+[00:00:00.000] (504c) INFO   fill in input took 0
+[00:00:00.000] (504c) INFO   Evaluation took 0
+[00:00:00.000] (504c) INFO   [24.0, 28.0, 29.0, 34.0]
+[00:00:02.524] (3350) INFO   Compiling took 0
+[00:00:05.928] (3350) INFO   fill in input took 3403
+[00:00:06.958] (3350) INFO   Evaluation took 1030

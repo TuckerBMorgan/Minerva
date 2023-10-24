@@ -32,6 +32,9 @@ pub fn worker_thread(thread_number: usize, mut memory_ptr: JobPtr, to_equation_s
                     JobType::Scalar(lhs, rhs, destination, length) => {
                         preform_scaler_operation(lhs, rhs, destination, length, &mut memory_ptr);
                     }
+                    JobType::Copy(from, to) => {
+                        preform_copy_operation(from, to, &mut memory_ptr);
+                    }
                     JobType::End => {
                         break;
                     },
